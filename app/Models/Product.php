@@ -29,14 +29,17 @@ class Product extends Model
 
     public function getStockDetailsAttribute()
     {
+        // $remainingStock = $this->available_stock;
+        // $box = intdiv($remainingStock, $this->packet);
+        // $remainingStock %= $this->packet;
+        // $packet = (int)$this->available_stock;
+        // $patti = intdiv($packet, $this->per_patti_piece);
+
         $remainingStock = $this->available_stock;
-        // Calculate the number of boxes
-        $box = intdiv($remainingStock, $this->packet);
-        $remainingStock %= $this->packet;
-        $packet = (int)$this->available_stock;
-        // Calculate the number of pattis
-        $patti = intdiv($packet, $this->per_patti_piece);
-        // Total packets remain unchanged
+        $box = $this->packet > 0 ? intdiv($remainingStock, $this->packet) : 0;
+        $remainingStock %= $this->packet > 0 ? $this->packet : 1;
+        $packet = (int)$remainingStock;
+        $patti = $this->per_patti_piece > 0 ? intdiv($packet, $this->per_patti_piece) : 0;
         return [
             'box' => $box,
             'patti' => $patti,

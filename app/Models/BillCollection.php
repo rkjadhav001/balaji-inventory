@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class PurchaseInvoice extends Model
+class BillCollection extends Model
 {
     use HasFactory;
 
@@ -13,8 +13,8 @@ class PurchaseInvoice extends Model
         'date' => 'datetime', 
     ];
 
-    public function purchaseDetails()
+    public function supplier()
     {
-        return $this->hasMany(PurchaseProduct::class, 'purchase_invoice_id', 'id');
+        return $this->belongsTo(Supplier::class,'party_id', 'id');
     }
 }

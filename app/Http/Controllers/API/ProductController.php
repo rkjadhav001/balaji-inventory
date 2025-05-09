@@ -33,11 +33,18 @@ class ProductController extends Controller
     {
         $data = $this->get_admin_by_token($request);
         if ($data) {
-            $product = Product::with('category')->join('categories', 'products.category_id', '=', 'categories.id')
+            $products = Product::with('category')->join('categories', 'products.category_id', '=', 'categories.id')
             ->where('categories.status', 1)
             ->get(['products.*']);
-            
-            return response()->json(['success' => 'true','data' => $product,'message' => 'Product List Fetch successfully'], 200);
+            foreach ($products as $key => $product) {
+                $stockDetails = $product->stock_details;
+                $product->stocks = [
+                    'box' => $stockDetails['box'],
+                    'patti' => $stockDetails['patti'],
+                    'packet' => $stockDetails['packet'],
+                ];
+            }
+            return response()->json(['success' => 'true','data' => $products,'message' => 'Product List Fetch successfully'], 200);
 
         } else {
             $errors = [];
@@ -53,6 +60,10 @@ class ProductController extends Controller
     {
         $data = $this->get_admin_by_token($request);
         if ($data) {
+            $findProduct = Product::where('barcode', $request->barcode)->first();
+            if ($findProduct) {
+                return response()->json(['success' => 'true', 'data' => [], 'message' => 'Barcode is already exist'], 200);
+            }
             $product = new Product();
             $product->name = $request->name;
             $product->short_name = $request->short_name;
@@ -77,6 +88,7 @@ class ProductController extends Controller
                 $product->thumbnail = $fileName;
             }
             $product->is_wholeseller = $request->is_wholeseller ?? 0;
+            $product->low_stock = $request->low_stock ?? 0;
             $product->save();
             return response()->json(['success' => 'true', 'data' => $product, 'message' => 'Product created successfully'], 200);
         } else {
@@ -95,6 +107,10 @@ class ProductController extends Controller
         if ($data) {
             $product = Product::find($id);
             if ($product) {
+                $findProduct = Product::where('barcode', $request->barcode)->where('id','<>',$id)->first();
+                if ($findProduct) {
+                    return response()->json(['success' => 'true', 'data' => [], 'message' => 'Barcode is already exist in another product'], 200);
+                }
                 $product->name = $request->name;
                 $product->short_name = $request->short_name;
                 $product->hsn = $request->hsn;
@@ -114,6 +130,7 @@ class ProductController extends Controller
                     $product->thumbnail = $fileName;
                 }
                 $product->is_wholeseller = $request->is_wholeseller ?? 0;
+                $product->low_stock = $request->low_stock ?? 0;
                 $product->save();
                 return response()->json(['success' => 'true', 'data' => $product, 'message' => 'Product updated successfully'], 200);
             } else {

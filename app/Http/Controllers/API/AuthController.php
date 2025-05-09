@@ -24,7 +24,7 @@ class AuthController extends Controller
             if (Auth::attempt(['email' => $request->email, 'password' => $request->password, 'role' => 'admin'])) {
                 $authUser = User::find(Auth::user()->id);
                 $token = $authUser->createToken('MyAuthApp')->plainTextToken;
-                User::where(['id' => $authUser->id])->update(['remember_token' => $token]);
+                User::where(['id' => $authUser->id])->update(['remember_token' => $token, 'device_id' => $request->device_id]);
                 $list = User::where('id',$authUser->id)->first();
                 return response()->json(['success' => 'true','token' => $token,'data' => $list,'message' => 'Login Successfully'], 200);
             } else {

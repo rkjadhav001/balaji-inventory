@@ -9,13 +9,27 @@ class Order extends Model
 {
     use HasFactory;
 
+
+
+    protected $fillable = [
+        'total_box',
+        'total_patti',
+        'total_packet',
+        'final_amount',
+    ];
+
     public function wholesaler()
     {
-        return $this->belongsTo(Wholesaler::class,'wholesaler_id', 'id');
+        return $this->belongsTo(Supplier::class,'wholesaler_id', 'id');
+    }
+
+    public function supplier()
+    {
+        return $this->belongsTo(Supplier::class,'supplier_id', 'id');
     }
 
     public function orderProduct()
     {
-        return $this->hasMany(OrderDetial::class, 'order_id',);
+        return $this->hasMany(OrderDetial::class, 'order_id','id');
     }
 }
