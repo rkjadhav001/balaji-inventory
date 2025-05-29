@@ -40,7 +40,7 @@ class SupplierController extends Controller
     {
         $data = $this->get_admin_by_token($request);
         if ($data) {
-            $supplier = Supplier::orderByDesc('id')->get();
+            $supplier = Supplier::orderByDesc('id')->where('deleted_at', 0)->get();
             return response()->json(['success' => 'true','data' => $supplier,'message' => 'Supplier List Fetch successfully'], 200);
         } else {
             $errors = [];
@@ -66,6 +66,7 @@ class SupplierController extends Controller
             $supplier->name = $request->name;
             $supplier->phone_number = $request->phone_number;
             $supplier->address = $request->address;
+            $supplier->state_id = $request->state_id;
             $supplier->amount = 0;
             $supplier->save();
             return response()->json(['success' => 'true','data' => $supplier,'message' => 'Supplier created successfully'], 200);
@@ -96,6 +97,7 @@ class SupplierController extends Controller
             $supplier->name = $request->name;
             $supplier->phone_number = $request->phone_number;
             $supplier->address = $request->address;
+            $supplier->state_id = $request->state_id;
             $supplier->save();
             return response()->json(['success' => 'true','data' => $supplier,'message' => 'Supplier updated successfully'], 200);
         } else {
@@ -112,7 +114,7 @@ class SupplierController extends Controller
     {
         $data = $this->get_admin_by_token($request);
         if ($data) {
-            $order = Order::where('supplier_id', $request->party_id)->where('order_type', 'retailer')->where('bill_status', 0)->orderByDesc('id')->get();
+            $order = Order::where('supplier_id', $request->party_id)->where('bill_status', 0)->orderByDesc('id')->get();
             foreach ($order as $key => $orders) {
                 $collection = BillCollection::where('party_id', $request->party_id)->where('bill_id', $orders->id)->sum('amount');
                 $returnBill = ReturnOrder::where('supplier_id', $request->party_id)->where('order_id', $orders->id)->sum('final_amount');
@@ -123,6 +125,29 @@ class SupplierController extends Controller
                 $orders->pending = $orders->final_amount - $collection - $returnBill - $expanses - $debitTransfer - $paymentBill + $creditTransfer;
             }
             return response()->json(['success' => 'true','data' => $order,'message' => 'Bills List Fetch successfully'], 200);
+        } else {
+            $errors = [];
+            array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
+            return response()->json([
+                'success' => 'false',
+                'data' => $errors
+            ], 200);
+        }
+    }
+
+    public function delete(Request $request, $id)
+    {
+        $data = $this->get_admin_by_token($request);
+        if ($data) {
+            $supplier = Supplier::find($id);
+            if (!$supplier) {
+                return response()->json(['success' => 'false','message' => 'Party not found'], 200);
+            }
+            $supplier->deleted_at = 1;
+            $supplier->save();
+            // Uncomment the line below if you want to actually delete the supplier
+            // $supplier->delete();
+            return response()->json(['success' => 'true','message' => 'Party deleted successfully'], 200);
         } else {
             $errors = [];
             array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);

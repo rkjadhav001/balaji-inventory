@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Wholeseler\ReportController;
 use App\Http\Controllers\Wholeseler\WholeSelerController;
 use Illuminate\Support\Facades\Route;
 
@@ -35,3 +36,9 @@ Route::get('party-order/{id}',[WholeSelerController::class, 'partyOrder'])->name
 Route::get('expanse-transaction',[WholeSelerController::class, 'expanseTransaction'])->name('expanseTransaction');
 Route::get('expanse-transaction-summery',[WholeSelerController::class, 'expanseTransactionSummery'])->name('expanseTransactionSummery');
 
+Route::get('a4-print',[WholeSelerController::class, 'printA4'])->name('printA4');
+
+Route::get('sale-purchase-report',[WholeSelerController::class, 'salePurchaseReport'])->name('salePurchaseReport');
+// Route::get('purchase-invoice/{id}',[WholeSelerController::class, 'purchaseInvoice'])->name('purchaseInvoice');
+
+Route::get('hsn-report',[ReportController::class, 'hsnWiseReport'])->name('hsnWiseReport');

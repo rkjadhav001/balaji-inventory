@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Wholeseler;
 
 use App\Http\Controllers\Controller;
+use App\Models\AppConfig;
 use App\Models\BillCollection;
 use App\Models\Expense;
 use App\Models\ExpenseDetail;
@@ -15,10 +16,12 @@ use App\Models\ReturnOrderDetail;
 use App\Models\Wholesaler;
 use App\Models\Supplier;
 use App\Models\Category;
+use App\Models\Transaction;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Session;
 
 class WholeSelerController extends Controller 
 
@@ -77,13 +80,13 @@ class WholeSelerController extends Controller
         if ($checkWholsaler) {
             $wholsalerID = $checkWholsaler->id;
         } else {
-            $wholsaler = new Supplier();
-            $wholsaler->name = $request->customerName;
-            $wholsaler->phone_number = $request->customerPhone;
-            $wholsaler->address = $request->customerAddress;
-            $wholsaler->amount = 0;
-            $wholsaler->save();
-            $wholsalerID = $wholsaler->id;
+            // $wholsaler = new Supplier();
+            // $wholsaler->name = $request->customerName;
+            // $wholsaler->phone_number = $request->customerPhone;
+            // $wholsaler->address = $request->customerAddress;
+            // $wholsaler->amount = 0;
+            // $wholsaler->save();
+            $wholsalerID = 0;
         }
         $order = new Order();
         $order->order_id = $orderID;
@@ -94,6 +97,9 @@ class WholeSelerController extends Controller
         $order->products = $request->totalProducts;
         $order->final_amount = $request->totalAmount;
         $order->order_type = 'wholesaler';
+        $order->name = $request->customerName;
+        $order->contact_number = $request->customerPhone;
+        $order->address = $request->customerAddress;
         $order->save();
         foreach ($request->products as $product) {
             if (($product['box'] ?? 0) > 0 || ($product['patti'] ?? 0) > 0 || ($product['packet'] ?? 0) > 0) {
@@ -167,6 +173,7 @@ class WholeSelerController extends Controller
 
     public function addToCart(Request $request)
     {
+        session()->forget('cart');
         // return $request->all();
         $cart = session()->get('cart', []);
         foreach ($request->products as $product) {
@@ -205,45 +212,45 @@ class WholeSelerController extends Controller
 
 
     public function updateCart(Request $request)
-{
-    $cart = session()->get('cart', []);
+    {
+        $cart = session()->get('cart', []);
 
-    foreach ($cart as &$cartItem) {
-        if ($cartItem['product_id'] == $request->product_id) {
-            $cartItem['box'] = $request->box;
-            $cartItem['patti'] = $request->patti;
-            $cartItem['packet'] = $request->packet;
-            $cartItem['total_qty'] = $request->total_qty;
-            break;
+        foreach ($cart as &$cartItem) {
+            if ($cartItem['product_id'] == $request->product_id) {
+                $cartItem['box'] = $request->box;
+                $cartItem['patti'] = $request->patti;
+                $cartItem['packet'] = $request->packet;
+                $cartItem['total_qty'] = $request->total_qty;
+                break;
+            }
         }
+
+        session()->put('cart', $cart);
+        session()->save();
+
+        return response()->json(['message' => 'Cart updated successfully', 'cart' => $cart]);
     }
 
-    session()->put('cart', $cart);
-    session()->save();
+    public function updateCartSession(Request $request)
+    {
+        Session::put('totalProducts', $request->totalProducts);
+        Session::put('totalAmount', $request->totalCost);
+        Session::put('totalBoxCount', $request->totalBoxCount);
+        Session::put('totalPattiCount', $request->totalPattiCount);
+        Session::put('totalPacketCount', $request->totalPacketCount);
 
-    return response()->json(['message' => 'Cart updated successfully', 'cart' => $cart]);
-}
-
-public function updateCartSession(Request $request)
-{
-    Session::put('totalProducts', $request->totalProducts);
-    Session::put('totalAmount', $request->totalCost);
-    Session::put('totalBoxCount', $request->totalBoxCount);
-    Session::put('totalPattiCount', $request->totalPattiCount);
-    Session::put('totalPacketCount', $request->totalPacketCount);
-
-    return response()->json([
-        'success' => true,
-        'message' => 'Cart session updated successfully',
-        'cartTotals' => [
-            'totalProducts' => $request->totalProducts,
-            'totalAmount' => $request->totalCost,
-            'totalBoxCount' => $request->totalBoxCount,
-            'totalPattiCount' => $request->totalPattiCount,
-            'totalPacketCount' => $request->totalPacketCount,
-        ]
-    ]);
-}
+        return response()->json([
+            'success' => true,
+            'message' => 'Cart session updated successfully',
+            'cartTotals' => [
+                'totalProducts' => $request->totalProducts,
+                'totalAmount' => $request->totalCost,
+                'totalBoxCount' => $request->totalBoxCount,
+                'totalPattiCount' => $request->totalPattiCount,
+                'totalPacketCount' => $request->totalPacketCount,
+            ]
+        ]);
+    }
 
 
     public function removeCart(Request $request)
@@ -368,8 +375,77 @@ public function updateCartSession(Request $request)
 
     public function printA4(Request $request)
     {
-        $order = Order::where('order_id',$request->order_id)->firstOrFail();
-        return view('pdf.print-a4',compact('order'));
+     
+        $appConfig = AppConfig::whereIn('name', ['contact_number','name'])->get();
+        $transaction = Transaction::findOrFail($request->id);
+        $order = Order::with([
+            'supplier',
+            'orderProduct.product' => function ($query) {
+                $query->select('id', 'name', 'short_name', 'hsn','tax_id'); 
+            }
+        ])->where('id', $transaction->bill_id)->firstOrFail();
+        return view('pdf.print-a4', compact('transaction', 'order', 'appConfig'));
     }
 
+    public function salePurchaseReport(Request $request)
+    {
+           $query = Transaction::query();
+
+        if ($request->party_id) {
+            $query->where('party_id', $request->party_id);
+        }
+        if ($request->filter_type == 'today' && $request->has('date')) {
+            $query->whereDate('date', Carbon::parse($request->date)->format('Y-m-d'));
+        } elseif ($request->filter_type == 'monthly' && $request->has('month')) {
+            $query->whereMonth('date', Carbon::parse($request->month)->format('m'))
+                  ->whereYear('date', Carbon::parse($request->month)->format('Y'));
+        } elseif ($request->filter_type == 'weekly') {
+            $date = $request->has('date') ? Carbon::parse($request->date) : Carbon::now();
+            $query->whereBetween('date', [
+                $date->copy()->startOfWeek(),
+                $date->copy()->endOfWeek()
+            ]);
+        } elseif ($request->filter_type == 'yearly' && $request->has('date')) {
+            $query->whereYear('date', Carbon::parse($request->date)->format('Y'));
+        } elseif ($request->filter_type == 'custom' && $request->has(['from_date', 'to_date'])) {
+            $query->whereBetween('date', [
+                Carbon::parse($request->from_date)->startOfDay(),
+                Carbon::parse($request->to_date)->endOfDay()
+            ]);
+        }
+        if ($request->transaction_type) {
+            if ($request->transaction_type == 'sale') {
+                $query->where('transaction_type', 'sale');
+            } elseif ($request->transaction_type == 'creditnote') {
+                $query->where('transaction_type', 'return');
+            } elseif ($request->transaction_type == 'purchase') {
+                $query->where('transaction_type', 'purchase');
+            } elseif ($request->transaction_type == 'debitnote') {
+                $query->where('transaction_type', 'purchase return');
+            } elseif ($request->transaction_type == 'saleCreditnote') {
+                $query->where(function ($q) {
+                    $q->where('transaction_type', 'sale')
+                      ->orWhere('transaction_type', 'return');
+                });
+            } elseif ($request->transaction_type == 'purchaseDebitnote') {
+                $query->where(function ($q) {
+                    $q->where('transaction_type', 'purchase')
+                      ->orWhere('transaction_type', 'purchase return');
+                });
+            }
+        }
+        $transactions = $query->with(['party', 'bill'])
+            ->orderByDesc('date')
+            ->get();
+        $transactions->transform(function ($transaction) {
+            if ($transaction->type === 'expense') {
+                $transaction->bill = $transaction->expanseBill;
+            }
+            return $transaction;
+        });
+        // return $transactions;
+        return view('pdf.party-sale-purchase-report', compact('transactions'));
+    }
+
+    
 }

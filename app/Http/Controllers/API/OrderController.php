@@ -252,17 +252,21 @@ class OrderController extends Controller
         }   
     }
 
-    public function transactions(Request $request)
+   public function transactions(Request $request)
     {
         $data = $this->get_admin_by_token($request);
         if ($data) {
-            // $transactions = Transaction::with('party', 'bill')->orderByDesc('id')->get();
             $query = Transaction::query();
+
+            if ($request->party_id) {
+                $query->where('party_id', $request->party_id);
+            }
+
             if ($request->filter_type == 'today' && $request->has('date')) {
                 $query->whereDate('date', Carbon::parse($request->date)->format('Y-m-d'));
             } elseif ($request->filter_type == 'monthly' && $request->has('month')) {
                 $query->whereMonth('date', Carbon::parse($request->month)->format('m'))
-                           ->whereYear('date', Carbon::parse($request->month)->format('Y'));
+                    ->whereYear('date', Carbon::parse($request->month)->format('Y'));
             } elseif ($request->filter_type == 'weekly') {
                 $date = $request->has('date') ? Carbon::parse($request->date) : Carbon::now();
                 $query->whereBetween('date', [
@@ -277,61 +281,81 @@ class OrderController extends Controller
                     Carbon::parse($request->to_date)->endOfDay()
                 ]);
             }
-            if ($request->party_id) {
-                $query->where('party_id', $request->party_id);
-            }
+
             if ($request->transaction_type) {
                 if ($request->transaction_type == 'sale') {
                     $query->where('transaction_type', 'sale');
-                } elseif ($request->transaction_type == 'sale return') {
-                    $query->where('transaction_type', 'sale return');
+                } elseif ($request->transaction_type == 'creditnote') {
+                    $query->where('transaction_type', 'return');
                 } elseif ($request->transaction_type == 'purchase') {
                     $query->where('transaction_type', 'purchase');
-                } elseif ($request->transaction_type == 'purchase return') {
+                } elseif ($request->transaction_type == 'debitnote') {
                     $query->where('transaction_type', 'purchase return');
-                } elseif ($request->transaction_type == 'sale+sale return') {
-                    $query->where('transaction_type', 'sale')
-                          ->orWhere('transaction_type', 'sale return');
-                } elseif ($request->transaction_type == 'purchase+purchase return') {
-                    $query->where('transaction_type', 'purchase')
-                          ->orWhere('transaction_type', 'purchase return');
+                } elseif ($request->transaction_type == 'saleCreditnote') {
+                    $query->where(function ($q) {
+                        $q->where('transaction_type', 'sale')
+                        ->orWhere('transaction_type', 'return');
+                    });
+                } elseif ($request->transaction_type == 'purchaseDebitnote') {
+                    $query->where(function ($q) {
+                        $q->where('transaction_type', 'purchase')
+                        ->orWhere('transaction_type', 'purchase return');
+                    });
                 }
             }
-            $perPage = $request->get('per_page', 25); 
-            $transactions = $query->with(['party', 'bill'])
-            ->orderByDesc('id')
-            ->paginate($perPage);
 
-             // Modify each transaction if needed
+            $perPage = $request->get('per_page', 25);
+
+            $transactions = $query->with(['party', 'bill'])
+                ->orderByDesc('id')
+                ->paginate($perPage);
+
             $transactions->getCollection()->transform(function ($transaction) {
                 if ($transaction->type === 'expense') {
                     $transaction->bill = $transaction->expanseBill;
                 }
+                if ($transaction->transaction_type === 'sale') {
+                    
+                }
                 return $transaction;
             });
-            // ->map(function ($transaction) {
-            //     if ($transaction->type === 'expense') {
-            //         $transaction->bill = $transaction->expanseBill;
-            //     }
-            //     return $transaction;
-            // });
+              $filteredQuery = clone $query;
+
+            $totalSale = (clone $filteredQuery)->where('transaction_type', 'sale')->sum('total_amount');
+            $totalPendingSale = (clone $filteredQuery)->where('transaction_type', 'sale')->sum('pending_amount');
+            $totalReturn = (clone $filteredQuery)->where('transaction_type', 'return')->sum('pending_amount');
+            $totalPurchase = (clone $filteredQuery)->where('transaction_type', 'purchase')->sum('total_amount');
+            $totalPurchaseReturn = (clone $filteredQuery)->where('transaction_type', 'purchase return')->sum('total_amount');
+            $totalExpenses = (clone $filteredQuery)->where('transaction_type', 'expense')->sum('total_amount');
+            $totalTakePayments = (clone $filteredQuery)->where('transaction_type', 'payment_in')->sum('total_amount');
+
+            $totalBalance = $totalSale - $totalTakePayments - $totalReturn - $totalExpenses - $totalPurchase + $totalPurchaseReturn;
             $transactionsList = [
+                'total_amount' => $totalBalance,
+                'net_receivable' => $totalSale - $totalReturn - $totalExpenses,
+                'net_payable' => $totalPurchase - $totalPurchaseReturn,
                 'current_page' => $transactions->currentPage(),
                 'last_page' => $transactions->lastPage(),
                 'per_page' => $transactions->perPage(),
                 'total' => $transactions->total(),
                 'data' => $transactions->items(),
             ];
-            return response()->json(['success' => 'true', 'data' => $transactionsList, 'message' => 'Transaction List Fetch successfully'], 200);
+
+            return response()->json([
+                'success' => 'true',
+                'data' => $transactionsList,
+                'message' => 'Transaction List Fetch successfully'
+            ], 200);
         } else {
-            $errors = [];
-            array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
             return response()->json([
                 'success' => 'false',
-                'data' => $errors
+                'data' => [
+                    ['code' => 'auth-001', 'message' => 'Unauthorized.']
+                ]
             ], 200);
         }
     }
+
 
     public function updateOrder(Request $request,$id)
     {

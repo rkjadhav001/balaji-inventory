@@ -5,6 +5,7 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\User;
+use App\Models\Tax;
 use Illuminate\Http\Request;
 
 class ProductController extends Controller
@@ -33,8 +34,9 @@ class ProductController extends Controller
     {
         $data = $this->get_admin_by_token($request);
         if ($data) {
-            $products = Product::with('category')->join('categories', 'products.category_id', '=', 'categories.id')
+            $products = Product::with('category', 'tax')->join('categories', 'products.category_id', '=', 'categories.id')
             ->where('categories.status', 1)
+            ->orderByRaw('CAST(products.product_sort AS UNSIGNED) ASC')
             ->get(['products.*']);
             foreach ($products as $key => $product) {
                 $stockDetails = $product->stock_details;
@@ -71,10 +73,56 @@ class ProductController extends Controller
             $product->barcode = $request->barcode;
             $product->category_id = $request->category_id;
             $product->unit_types = $request->unit_types;
-            $product->selling_price = $request->selling_price;
-            $product->box = $request->box;
+           
+            $product->box = $request->box ?? 1;
             $product->packet = $request->packet;
+            $product->tax_id = $request->tax_id;
             $product->patti = $request->patti;
+            $product->sell_gst_type = $request->sell_gst_type;
+            $product->purchase_gst_type = $request->purchase_gst_type;
+
+            $tax = Tax::find($request->tax_id);
+            if ($tax) {
+                $gstRate = $tax ? $tax->value : 0;
+            } else {
+                $gstRate = 0;
+            }
+            
+            $selling_price = $request->selling_price;
+            $purchase_price = $request->purchase_price ?? 0;
+           if ($request->sell_gst_type == 'included' && $gstRate > 0) {
+                $excluded_selling_price = round($selling_price / (1 + ($gstRate / 100)), 2);
+                $included_selling_price = $selling_price;
+            } else {
+                $excluded_selling_price = $selling_price;
+                $included_selling_price = round($selling_price * (1 + ($gstRate / 100)), 2);
+            }
+            if ($request->purchase_gst_type == 'included' && $gstRate > 0) {
+                $excluded_purchase_price = round($purchase_price / (1 + ($gstRate / 100)), 2);
+                $included_purchase_price = $purchase_price;
+            } else {
+                $excluded_purchase_price = $purchase_price;
+                $included_purchase_price = round($purchase_price * (1 + ($gstRate / 100)), 2);
+            }
+            $product->excluded_selling_price = $excluded_selling_price;
+            $product->excluded_purchase_price = $excluded_purchase_price;
+            $product->included_selling_price = $included_selling_price;
+            $product->included_purchase_price = $included_purchase_price;
+
+
+            if ($request->sell_gst_type == 'included') {
+                $product->selling_price = $included_selling_price;
+            } else {
+                $product->selling_price = $included_selling_price;
+            }
+
+            if ($request->purchase_gst_type == 'included') {
+                $product->purchase_price = $included_purchase_price;
+            } else {
+                $product->purchase_price = $included_purchase_price;
+            }
+            
+
             if ($request->patti) {
                 $calPerPiece = $request->packet / $request->patti;
                 $product->per_patti_piece = $calPerPiece;
@@ -117,12 +165,62 @@ class ProductController extends Controller
                 $product->barcode = $request->barcode;
                 $product->category_id = $request->category_id;
                 $product->unit_types = $request->unit_types;
-                $product->selling_price = $request->selling_price;
-                $product->box = $request->box;
+                // $product->selling_price = $request->selling_price;
+                // $product->purchase_price = $request->purchase_price ?? 0;
+                $product->box = $request->box ?? 1;
+                $product->tax_id = $request->tax_id;
                 $product->packet = $request->packet;
                 $product->patti = $request->patti;
-                $calPerPiece = $request->packet / $request->patti;
-                $product->per_patti_piece = $calPerPiece;
+                if ($request->patti) {
+                    $calPerPiece = $request->packet / $request->patti;
+                    $product->per_patti_piece = $calPerPiece;
+                } else {
+                    $product->per_patti_piece = 0;
+                }
+
+                $product->sell_gst_type = $request->sell_gst_type;
+                $product->purchase_gst_type = $request->purchase_gst_type;
+                $tax = Tax::find($request->tax_id);
+                if ($tax) {
+                    $gstRate = $tax ? $tax->value : 0;
+                } else {
+                    $gstRate = 0;
+                }
+                $selling_price = $request->selling_price;
+                $purchase_price = $request->purchase_price ?? 0;
+                if ($request->sell_gst_type == 'included' && $gstRate > 0) {
+                    $excluded_selling_price = round($selling_price / (1 + ($gstRate / 100)), 2);
+                    $included_selling_price = $selling_price;
+                } else {
+                    $excluded_selling_price = $selling_price;
+                    $included_selling_price = round($selling_price * (1 + ($gstRate / 100)), 2);
+                }
+                if ($request->purchase_gst_type == 'included' && $gstRate > 0) {
+                    $excluded_purchase_price = round($purchase_price / (1 + ($gstRate / 100)), 2);
+                    $included_purchase_price = $purchase_price;
+                } else {
+                    $excluded_purchase_price = $purchase_price;
+                    $included_purchase_price = round($purchase_price * (1 + ($gstRate / 100)), 2);
+                }
+                $product->excluded_selling_price = $excluded_selling_price;
+                $product->excluded_purchase_price = $excluded_purchase_price;
+                $product->included_selling_price = $included_selling_price;
+                $product->included_purchase_price = $included_purchase_price;
+
+                if ($request->sell_gst_type == 'included') {
+                    $product->selling_price = $included_selling_price;
+                } else {
+                    $product->selling_price = $included_selling_price;
+                }
+
+                if ($request->purchase_gst_type == 'included') {
+                    $product->purchase_price = $included_purchase_price;
+                } else {
+                    $product->purchase_price = $included_purchase_price;
+                }
+
+                // $calPerPiece = $request->packet / $request->patti;
+                // $product->per_patti_piece = $calPerPiece;
                 if ($request->thumbnail) {
                     $file = $request->file('thumbnail');
                     $fileName = $file->hashName();
@@ -197,4 +295,28 @@ class ProductController extends Controller
             ], 200);
         }
     }
+
+     public function sortingUpdate(Request $request)
+    {
+        $data = $this->get_admin_by_token($request);
+        if ($data) {
+            foreach ($request->products as $product) {
+                Product::where('id', $product['id'])->update(['product_sort' => $product['sorting']]);
+            }
+            $products = Product::orderByRaw('CAST(product_sort AS UNSIGNED) ASC')->get();
+            return response()->json([
+                'success' => true,
+                'data' => $products,
+                'message' => 'Products Sorting Updated Successfully.'
+            ]);
+        } else {
+            $errors = [];
+            array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
+            return response()->json([
+                'success' => 'false',
+                'data' => $errors
+            ], 200);
+        }
+    }
+
 }

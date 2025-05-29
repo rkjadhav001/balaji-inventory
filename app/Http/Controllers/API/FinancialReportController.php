@@ -12,6 +12,7 @@ use App\Models\OrderDetial;
 use App\Models\PaymentInBill;
 use App\Models\DuePayment;
 use App\Models\PurchaseInvoice;
+use App\Models\PurchaseReturnInvoice;
 use App\Models\Product;
 use App\Models\ReturnOrder;
 use App\Models\ReturnOrderDetail;
@@ -54,19 +55,28 @@ class FinancialReportController extends Controller
         if ($data) {
             $suppliers = Supplier::orderByDesc('id')->get();
             foreach ($suppliers as $key => $supplier) {
-                $sale = Order::where('supplier_id', $supplier->id)->where('order_type', 'retailer')->sum('final_amount');
+                $sale = Order::where('supplier_id', $supplier->id)->sum('final_amount');
                 $collection = BillCollection::where('party_id', $supplier->id)->sum('amount');
                 $returnBill = ReturnOrder::where('supplier_id', $supplier->id)->sum('final_amount');
                 $expanses = Expense::where('party_id', $supplier->id)->sum('total_amount');
+                $creditTransfer = TransferAmount::with('creditedParty', 'debitedParty')->where('to_transfer_id', $supplier->id)->where('type', 'bill')->sum('amount');
+                $debitTransfer = TransferAmount::where('from_transfer_id', $supplier->id)->where('type', 'bill')->sum('amount');
+                $purchaseInvoice = PurchaseInvoice::where('party_id', $supplier->id)->sum('total_payable_amount');
+                $purchaseInvoicePayment = PurchaseInvoice::where('party_id', $supplier->id)->sum('payment_amount');
+                $purchaseReturnInvoice = PurchaseReturnInvoice::where('party_id', $supplier->id)->sum('total_payable_amount');
+                $duePaymentCash = DuePayment::where('party_id', $supplier->id)->sum('cash_amount');
+                $duePaymentBank = DuePayment::where('party_id', $supplier->id)->sum('cash_amount');
+                $paymentIn = Transaction::where('party_id', $supplier->id)->where('transaction_type', 'payment_in')->sum('total_amount');
                 $supplier->sale = $sale;
                 $supplier->collection = $collection;
                 // $supplier->pending = $sale - $collection - $returnBill - $expanses;
-                $supplier->pending = $supplier->amount;
+                $supplier->pending = $sale - $collection - $paymentIn - $returnBill - $expanses - $creditTransfer + $debitTransfer - $purchaseInvoice - $purchaseInvoicePayment + $purchaseReturnInvoice - $duePaymentCash - $duePaymentBank;
                 $supplier->outstanding = 0.00;
                 $supplier->return = $returnBill;
-
+                $netReceivable = $sale - $collection - $paymentIn - $returnBill - $expanses - $creditTransfer + $debitTransfer;
+                $netPayable = $purchaseInvoice - $purchaseInvoicePayment + $purchaseReturnInvoice - $duePaymentCash - $duePaymentBank;
             }
-            return response()->json(['success' => 'true','data' => $suppliers,'message' => 'Supplier List Fetch successfully'], 200);
+            return response()->json(['success' => 'true','data' => $suppliers, 'net_receivable' => $netReceivable, 'net_payable' => $netPayable,'message' => 'Supplier List Fetch successfully'], 200);
         } else {
             $errors = [];
             array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
@@ -734,8 +744,28 @@ class FinancialReportController extends Controller
                 $expanseType->save();
             }
 
+            if ($request->payment_type == 'cash') {
+                  $bankTransactionCash = new BankTransaction();
+                    $bankTransactionCash->withdraw_from = "Cash";
+                    $bankTransactionCash->p_type = 'expense_payment_cash';
+                    $bankTransactionCash->deposit_to = $expense->id;
+                    $bankTransactionCash->balance = $request->total_amount;
+                    $bankTransactionCash->date = $request->date ?? now();
+                    $bankTransactionCash->save();
+            } else {
+                $bank = Banks::where('is_default', 1)->first();
+                $bankTransactionCash = new BankTransaction();
+                $bankTransactionCash->withdraw_from = $bank->id;
+                $bankTransactionCash->p_type = 'expense_payment_bank';
+                $bankTransactionCash->deposit_to = $expense->id;
+                $bankTransactionCash->balance = $request->total_amount;
+                $bankTransactionCash->date = $request->date ?? now();
+                $bankTransactionCash->save();
+                $bank->total_amount = $bank->total_amount - $request->total_amount;
+                $bank->save();
+            }
+            
             return response()->json(['success' => 'true', 'data' => $expense, 'message' => 'Expanses Add successfully'], 200);
-
         } else {
             $errors = [];
             array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
@@ -876,7 +906,39 @@ class FinancialReportController extends Controller
                 $expense->note = $request->note;
                 $expense->type = $request->type;
                 $expense->save();
-
+                if ($request->payment_type == 'cash') {
+                    $bankTransactionCashData = BankTransaction::where('p_type', 'expense_payment_cash')->where('deposit_to', $expense->id)->first();
+                    if ($bankTransactionCashData) {
+                        $bankTransactionCash = BankTransaction::find($bankTransactionCashData->id);
+                    } else {
+                        $bankTransactionCash = new BankTransaction();
+                    }
+                    $bankTransactionCash->withdraw_from = "Cash";
+                    $bankTransactionCash->p_type = 'expense_payment_cash';
+                    $bankTransactionCash->deposit_to = $expense->id;
+                    $bankTransactionCash->balance = $request->total_amount;
+                    $bankTransactionCash->date = $request->date ?? now();
+                    $bankTransactionCash->save();
+                } else {
+                    $bank = Banks::where('is_default', 1)->first();
+                    $bankTransactionCashData = BankTransaction::where('p_type', 'expense_payment_bank')->where('deposit_to', $expense->id)->first();
+                    if ($bankTransactionCashData) {
+                        $bankTransactionCash = BankTransaction::find($bankTransactionCashData->id);
+                        $oldAmount = $bankTransactionCash->balance;
+                    } else {
+                        $bankTransactionCash = new BankTransaction();
+                        $oldAmount = 0;
+                    }
+                    $bankTransactionCash->withdraw_from = $bank->id;
+                    $bankTransactionCash->p_type = 'expense_payment_bank';
+                    $bankTransactionCash->deposit_to = $expense->id;
+                    $bankTransactionCash->balance = $request->total_amount;
+                    $bankTransactionCash->date = $request->date ?? now();
+                    $bankTransactionCash->save();
+                    $finalBankAmount = $bank->total_amount + $oldAmount - $request->total_amount;
+                    $bank->total_amount = $finalBankAmount;
+                    $bank->save();
+                }
                 $transaction = Transaction::where('bill_id', $id)->where('type','expense')->first();
                 $transaction->transaction_type = 'expense';
                 $transaction->party_id = 0;
@@ -913,19 +975,53 @@ class FinancialReportController extends Controller
         } 
     }
 
+    public function deleteExpense(Request $request, $id)
+    {
+        $data = $this->get_admin_by_token($request);
+        if ($data) {
+            $transaction = Transaction::where('id', $id)->where('transaction_type','expense')->first();
+            if ($transaction) {
+                $expense = Expense::where('id', $transaction->bill_id)->first();
+                ExpenseDetail::where('expense_id', $expense->id)->delete();
+                if ($expense->payment_type == 'cash') {
+                    $bankTransactionCash = BankTransaction::where('p_type', 'expense_payment_cash')->where('deposit_to', $expense->id)->delete();
+                } else {
+                    $bank = Banks::where('is_default', 1)->first();
+                    $bankTransactionCash = BankTransaction::where('p_type', 'expense_payment_bank')->where('deposit_to', $expense->id)->delete();
+                    $finalBankAmount = $bank->total_amount + $expense->total_amount;
+                    $bank->total_amount = $finalBankAmount;
+                    $bank->save();
+                }
+                $transaction->delete();
+                $expense->delete();
+                return response()->json(['success' => 'true', 'data' => [], 'message' => 'Expanses Delete successfully'], 200);
+            } else {
+                return response()->json(['success' => 'true', 'data' => [], 'message' => 'Expanses Not Found'], 200);
+            }
+        } else {
+            $errors = [];
+            array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
+            return response()->json([
+                'success' => 'false',
+                'data' => $errors
+            ], 200);
+        }
+    }
+
     public function duePaymentList(Request $request)
     {
         $data = $this->get_admin_by_token($request);
         if ($data) {
             $PurchaseInvoice = PurchaseInvoice::where('party_id', $request->party_id)->get();
             if (count($PurchaseInvoice) > 0) {
+                $PurchaseReturnInvoice = PurchaseReturnInvoice::where('party_id', $request->party_id)->sum('total_payable_amount');
                 $duePayment = DuePayment::where('party_id', $request->party_id)->get();
                 $paidAmount = $duePayment->sum('paid_amount') + $PurchaseInvoice->sum('payment_amount');
                 $totalAmount = $PurchaseInvoice->sum('total_payable_amount');
                 $remainingAmount = $totalAmount - $paidAmount;
                 $payment = [
                     'remaining_amount' => $remainingAmount,
-                    'paid_amount' => $duePayment->sum('paid_amount') + $PurchaseInvoice->sum('payment_amount'),
+                    'paid_amount' => $duePayment->sum('paid_amount') + $PurchaseInvoice->sum('payment_amount') - $PurchaseReturnInvoice,
                     'total_amount' => $PurchaseInvoice->sum('total_payable_amount'),
                 ];
             } else {
@@ -954,17 +1050,30 @@ class FinancialReportController extends Controller
             $duePayment->payment_type = $request->payment_type;
             if ($request->payment_type == 'cash') {
                 $duePayment->cash_amount = $request->cash_amount;
+                $amount = $request->cash_amount;
             } elseif ($request->payment_type == 'bank') {
                 $duePayment->bank_amount = $request->bank_amount;
                 $duePayment->bank_id = $request->bank_id;
+                $amount = $request->bank_amount;
             } elseif ($request->payment_type == 'manual') {
                 $duePayment->cash_amount = $request->cash_amount;
                 $duePayment->bank_amount = $request->bank_amount;
                 $duePayment->bank_id = $request->bank_id;
+                $amount = $request->cash_amount + $request->bank_amount;
             }
             $duePayment->note = $request->note;
             $duePayment->save();
 
+            $transaction = new Transaction();
+            $transaction->type = 'due payment';
+            $transaction->date = $request->date;
+            $transaction->party_id = $request->party_id;
+            $transaction->total_amount = $amount;
+            $transaction->pending_amount = 0;
+            $transaction->bill_id = $duePayment->id;
+            $transaction->is_bill = 1;
+            $transaction->transaction_type = 'duePayment';
+            $transaction->save();
 
             if ($request->payment_type == 'cash') {
                 $bankTransactionCash = new BankTransaction();
@@ -994,7 +1103,6 @@ class FinancialReportController extends Controller
                 $bankTransactionCash->date = $request->date ?? now();
                 $bankTransactionCash->save();
 
-
                 $bank = Banks::where('id', $request->bank_id)->first();
                 $bankTransactionCash1 = new BankTransaction();
                 $bankTransactionCash1->withdraw_from = $bank->id;
@@ -1005,10 +1113,186 @@ class FinancialReportController extends Controller
                 $bankTransactionCash1->save();
                 $bank->total_amount = $bank->total_amount - $request->bank_amount;
                 $bank->save();
-
             }
-
             return response()->json(['success' => 'true', 'data' => $duePayment, 'message' => 'Due Payment Add successfully'], 200);
+        } else {
+            $errors = [];
+            array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
+            return response()->json([
+                'success' => 'false',
+                'data' => $errors
+            ], 200);
+        }
+    }
+
+    public function duePaymentView(Request $request, $id)
+    {
+        $data = $this->get_admin_by_token($request);
+        if ($data) {
+            $transaction = Transaction::where('id', $id)->where('transaction_type', 'duePayment')->first();
+            if ($transaction) {
+                $duePayment = DuePayment::find($transaction->bill_id);
+                return response()->json(['success' => 'true', 'data' => $duePayment, 'message' => 'Due Payment View successfully'], 200);
+            } else {
+                return response()->json(['success' => 'false', 'message' => 'Transaction Not Found'], 200);
+            }
+            
+        } else {
+            $errors = [];
+            array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
+            return response()->json([
+                'success' => 'false',
+                'data' => $errors
+            ], 200);
+        } 
+    }
+
+    public function duePaymentDelete(Request $request, $id)
+    {
+        $data = $this->get_admin_by_token($request);
+        if ($data) {
+            $transaction = Transaction::where('id', $id)->where('transaction_type', 'duePayment')->first();
+            if ($transaction) {
+                $duePayment = DuePayment::find($transaction->bill_id);
+                if ($duePayment->payment_type == 'cash') {
+                    $paymentTransaction = BankTransaction::where('p_type', 'due_payment_cash')->where('deposit_to', $transaction->bill_id)->delete();
+                } else if ($duePayment->payment_type == 'bank') {
+                    $paymentTransaction = BankTransaction::where('p_type', 'due_payment_bank')->where('deposit_to', $transaction->bill_id)->delete();
+                    $bank = Banks::where('id', $duePayment->bank_id)->first();
+                    $bank->total_amount = $bank->total_amount + $duePayment->bank_amount;
+                    $bank->save();
+                } else if ($duePayment->payment_type == 'manual') {
+                    $paymentTransaction = BankTransaction::where('p_type', 'due_payment_cash')->where('deposit_to', $transaction->bill_id)->delete();
+                    $paymentTransaction1 = BankTransaction::where('p_type', 'due_payment_bank')->where('deposit_to', $transaction->bill_id)->delete();
+                    $bank = Banks::where('id', $duePayment->bank_id)->first();
+                    $bank->total_amount = $bank->total_amount + $duePayment->bank_amount;
+                    $bank->save();
+                }
+                $duePayment->delete();
+                $transaction->delete();
+                return response()->json(['success' => 'true', 'data' => $duePayment, 'message' => 'Due Payment Delete successfully'], 200);
+            } else {
+                return response()->json(['success' => 'false', 'message' => 'Transaction Not Found'], 200);
+            }
+        } else {
+            $errors = [];
+            array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
+            return response()->json([
+                'success' => 'false',
+                'data' => $errors
+            ], 200);
+        }
+    }
+
+    public function duePaymentUpdate(Request $request, $id)
+    {
+        $data = $this->get_admin_by_token($request);
+        if ($data) {
+            $transaction = Transaction::where('id', $id)->where('transaction_type', 'duePayment')->first();
+            if ($transaction) {
+                $duePayment = DuePayment::find($transaction->bill_id);
+                $duePayment->date = $request->date;
+                $duePayment->party_id = $request->party_id;
+                $duePayment->total_amount = $request->total_amount;
+                $duePayment->remaining_amount = $request->remaining_amount;
+                $duePayment->payment_type = $request->payment_type;
+                if ($request->payment_type == 'cash') {
+                    $duePayment->cash_amount = $request->cash_amount;
+                    $amount = $request->cash_amount;
+                } elseif ($request->payment_type == 'bank') {
+                    $duePayment->bank_amount = $request->bank_amount;
+                    $duePayment->bank_id = $request->bank_id;
+                    $amount = $request->bank_amount;
+                } elseif ($request->payment_type == 'manual') {
+                    $duePayment->cash_amount = $request->cash_amount;
+                    $duePayment->bank_amount = $request->bank_amount;
+                    $duePayment->bank_id = $request->bank_id;
+                    $amount = $request->cash_amount + $request->bank_amount;
+                }
+                $duePayment->note = $request->note;
+                $duePayment->save();
+    
+                // Transaction Update
+                // $transaction = new Transaction();
+                $transaction->type = 'due payment';
+                $transaction->date = $request->date;
+                $transaction->party_id = $request->party_id;
+                $transaction->total_amount = $amount;
+                $transaction->pending_amount = 0;
+                $transaction->bill_id = $duePayment->id;
+                $transaction->is_bill = 1;
+                $transaction->transaction_type = 'duePayment';
+                $transaction->save();
+    
+                // Bank And Cash Transaction
+                if ($request->payment_type == 'cash') {
+                    $paymentTransaction = BankTransaction::where('p_type', 'due_payment_cash')->where('deposit_to', $duePayment->id)->first();
+                    if ($paymentTransaction) {
+                        $bankTransactionCash = BankTransaction::find($paymentTransaction->id);
+                    } else {
+                        $bankTransactionCash = new BankTransaction();
+                    }
+                    $bankTransactionCash->withdraw_from = "Cash";
+                    $bankTransactionCash->p_type = 'due_payment_cash';
+                    $bankTransactionCash->deposit_to = $duePayment->id;
+                    $bankTransactionCash->balance = $request->cash_amount;
+                    $bankTransactionCash->date = $request->date ?? now();
+                    $bankTransactionCash->save();
+                } elseif ($request->payment_type == 'bank') {
+                    $bank = Banks::where('id', $request->bank_id)->first();
+                    $paymentTransaction = BankTransaction::where('p_type', 'due_payment_bank')->where('deposit_to', $duePayment->id)->first();
+                    if ($paymentTransaction) {
+                        $bankTransactionCash = BankTransaction::find($paymentTransaction->id);
+                        $oldAmount = $bankTransactionCash->balance;
+                    } else {
+                        $bankTransactionCash = new BankTransaction();
+                        $oldAmount = 0;
+                    }
+                    $bankTransactionCash->withdraw_from = $bank->id;
+                    $bankTransactionCash->p_type = 'due_payment_bank';
+                    $bankTransactionCash->deposit_to = $duePayment->id;
+                    $bankTransactionCash->balance = $request->bank_amount;
+                    $bankTransactionCash->date = $request->date ?? now();
+                    $bankTransactionCash->save();
+                    $bank->total_amount = ($bank->total_amount + $oldAmount) - $request->bank_amount;
+                    $bank->save();
+                } elseif ($request->payment_type == 'manual') {
+                    $paymentCashTransaction = BankTransaction::where('p_type', 'due_payment_cash')->where('deposit_to', $duePayment->id)->first();
+                    if ($paymentCashTransaction) {
+                        $bankTransactionCash = BankTransaction::find($paymentCashTransaction->id);
+                    } else {
+                        $bankTransactionCash = new BankTransaction();
+                    }
+                    $bankTransactionCash->withdraw_from = "Cash";
+                    $bankTransactionCash->p_type = 'due_payment_cash';
+                    $bankTransactionCash->deposit_to = $duePayment->id;
+                    $bankTransactionCash->balance = $request->cash_amount;
+                    $bankTransactionCash->date = $request->date ?? now();
+                    $bankTransactionCash->save();
+    
+                    $bank = Banks::where('id', $request->bank_id)->first();
+                    $paymentBankTransaction = BankTransaction::where('p_type', 'due_payment_bank')->where('deposit_to', $duePayment->id)->first();
+                    if ($paymentBankTransaction) {
+                        $bankTransactionBank = BankTransaction::find($paymentBankTransaction->id);
+                        $oldAmount = $paymentBankTransaction->balance;
+                    } else {
+                        $bankTransactionBank = new BankTransaction();
+                        $oldAmount = 0;
+                    }
+                    $bankTransactionBank->withdraw_from = $bank->id;
+                    $bankTransactionBank->p_type = 'due_payment_bank';
+                    $bankTransactionBank->deposit_to = $duePayment->id;
+                    $bankTransactionBank->balance = $request->bank_amount;
+                    $bankTransactionBank->date = $request->date ?? now();
+                    $bankTransactionBank->save();
+                    $bank->total_amount = ($bank->total_amount + $oldAmount) - $request->bank_amount;
+                    $bank->save();
+                }
+                return response()->json(['success' => 'true', 'data' => $duePayment, 'message' => 'Due Payment Updated successfully'], 200);
+            } else {
+                return response()->json(['success' => 'true', 'message' => 'Transaction Not Found'], 200);
+            }
+            
         } else {
             $errors = [];
             array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);

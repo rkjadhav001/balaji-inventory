@@ -311,7 +311,12 @@ class BanksController extends Controller
                     ->orWhere(function ($subQuery) use ($request) {
                         $subQuery->where('p_type', 'due_payment_bank')
                             ->where('withdraw_from', $request->bank_id);
+                    })
+                    ->orWhere(function ($subQuery) use ($request) {
+                        $subQuery->where('p_type', 'expense_payment_cash')
+                            ->where('withdraw_from', $request->bank_id);
                     });
+                    
                 })
                 ->get();
             
@@ -374,6 +379,12 @@ class BanksController extends Controller
                         $transaction->title = 'Due Payment';
                         $transaction->credit_debit = "Debit";
                         $transaction->bank_to = '-';
+                    } elseif ($transaction->p_type == 'expense_payment_cash') {
+                        $bank = Banks::where('id', $transaction->withdraw_from)->first();
+                        $transaction->bank = $bank;
+                        $transaction->title = 'Expense';
+                        $transaction->credit_debit = "Debit";
+                        $transaction->bank_to = '-';
                     }
                 });
 
@@ -428,6 +439,10 @@ class BanksController extends Controller
                 } elseif ($transaction->p_type == 'due_payment_cash') {
                     $transaction->bank = (object)[];
                     $transaction->title = 'Due Payment';
+                    $transaction->credit_debit = 'Debit';
+                } elseif ($transaction->p_type == 'expense_payment_cash') {
+                    $transaction->bank = (object)[];
+                    $transaction->title = 'Expense';
                     $transaction->credit_debit = 'Debit';
                 }
                 // return $transaction;

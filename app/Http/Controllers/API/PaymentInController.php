@@ -169,6 +169,10 @@ class PaymentInController extends Controller
             $biilTransaction = Transaction::where('id', $request->bill_id)->where('transaction_type', 'payment_in')->first();
             if ($biilTransaction) {
                 $PaymentIn = PaymentInBill::where('transaction_id', $request->bill_id)->get();
+               foreach ($PaymentIn as $key => $value) {
+                    $saleBill = Transaction::where('bill_id', $value->bill_id)->where('is_bill',1)->where('transaction_type', 'sale')->first();
+                    $value->current_amount = $saleBill->pending_amount;
+                }
                 $biilTransaction->payments = $PaymentIn;
                 $paymentInTypes = PaymentInType::where('payment_in_tran_id', $request->bill_id)->get();
                 if(count($paymentInTypes) == 1) {
@@ -222,7 +226,30 @@ class PaymentInController extends Controller
             foreach ($request->bills as $key => $bills) {
                 $biilTransaction = Transaction::where('bill_id', $bills['bill_id'])->where('transaction_type', 'sale')->first();
                 if (isset($biilTransaction)) {
-                    $biilTransaction->pending_amount -= $bills['amount'];
+
+                    $checkOldPayment = PaymentInBill::where('transaction_id', $transaction->id)->where('bill_id', $bills['bill_id'])->first();
+                    if ($checkOldPayment) {
+                        $PaymentIn = PaymentInBill::where('id', $checkOldPayment->id)->first();
+                        $oldInAMount = $PaymentIn->amount;
+                        $PaymentIn->transaction_id = $transaction->id;
+                        $PaymentIn->bill_id = $bills['bill_id'];
+                        $PaymentIn->bill_amount = $bills['bill_amount'];
+                        $PaymentIn->current_amount = $bills['current_amount'];
+                        $PaymentIn->amount = $bills['amount'];
+                        $PaymentIn->save();
+                    } else {
+                        $PaymentIn = new PaymentInBill();
+                        $oldInAMount = 0;
+                        $PaymentIn->transaction_id = $transaction->id;
+                        $PaymentIn->bill_id = $bills['bill_id'];
+                        $PaymentIn->bill_amount = $bills['bill_amount'];
+                        $PaymentIn->current_amount = $bills['current_amount'];
+                        $PaymentIn->amount = $bills['amount'];
+                        $PaymentIn->save();
+                    }
+
+                    $newAmount = ($biilTransaction->pending_amount + $oldInAMount) - $bills['amount'];
+                    $biilTransaction->pending_amount = $newAmount;
                     if ($biilTransaction->pending_amount == 0) {
                         $biilTransaction->type = 'sale paid';
                         $mainOrderFind = Order::where('id', $bills['bill_id'])->first();
@@ -233,24 +260,6 @@ class PaymentInController extends Controller
                     }
                     $biilTransaction->save();
 
-                    $checkOldPayment = PaymentInBill::where('transaction_id', $transaction->id)->where('bill_id', $bills['bill_id'])->first();
-                    if ($checkOldPayment) {
-                        $PaymentIn = PaymentInBill::where('id', $checkOldPayment->id)->first();
-                        $PaymentIn->transaction_id = $transaction->id;
-                        $PaymentIn->bill_id = $bills['bill_id'];
-                        $PaymentIn->bill_amount = $bills['bill_amount'];
-                        $PaymentIn->current_amount = $bills['current_amount'];
-                        $PaymentIn->amount = $bills['amount'];
-                        $PaymentIn->save();
-                    } else {
-                        $PaymentIn = new PaymentInBill();
-                        $PaymentIn->transaction_id = $transaction->id;
-                        $PaymentIn->bill_id = $bills['bill_id'];
-                        $PaymentIn->bill_amount = $bills['bill_amount'];
-                        $PaymentIn->current_amount = $bills['current_amount'];
-                        $PaymentIn->amount = $bills['amount'];
-                        $PaymentIn->save();
-                    }
                 }
             }
             $paymentInTypes = PaymentInType::where('payment_in_tran_id', $id)->delete();

@@ -59,13 +59,13 @@
         }
         @media print {
             @page {
-                size: 58mm auto; 
+                size: 80mm 297mm; 
                 margin: 0;
             }
             
             body {
                 width: 58mm;
-                margin: 0;
+                /* margin: 0; */
             }
             
             .invoice-container {
@@ -119,28 +119,27 @@
                     </tr>
                     
                 @endforeach
-                <tr>
-                    <td colspan="2"></td>
+                <tr style="border-top: 1px solid black;">
+                    <td colspan="2">Total</td>
                     <td style="text-align: center;font-weight: bold">{{ $purchase->total_box }}</td>
                     <td style="text-align: center;font-weight: bold">{{ $purchase->total_patti }}</td>
                     <td style="text-align: center;font-weight: bold">{{ $purchase->total_packet }}</td>
-                    <td>₹{{ $purchase->total_purchase_amount }}</td>
+                    {{-- <td>₹{{ $purchase->total_purchase_amount }}</td> --}}
+                    <td></td>
                 </tr>
             </tbody>
         </table>
         <hr class="line-dot">
         
-        <p>Items Price: 360 ₹</p>
-        <p>Tax / VAT: 40 ₹</p>
-        <p>Subtotal: 400 ₹</p>
-        <p>Extra Discount: 20 ₹</p>
-        <p>Coupon Discount: 10 ₹</p>
-        <p class="total">Total: 370 ₹</p>
+        <p>Items Price: {{ $purchase->total_purchase_amount + $purchase->adjustment}} ₹</p>
+        <p>Tax / VAT: 0 ₹</p>
+        <p>Subtotal: {{ $purchase->total_purchase_amount + $purchase->adjustment }} ₹</p>
+        <p>Adjustment: {{ $purchase->adjustment }} ₹</p>
+        <p class="total">Total: {{ $purchase->total_purchase_amount }} ₹</p>
         
         <hr class="line-dot">
-        <p>Paid by: Cash</p>
-        <p>Amount: 400 ₹</p>
-        <p>Change: 30 ₹</p>
+        <p>Paid by: {{ $purchase->payment_type == 'cash' ? 'Cash' : 'Bank' }}</p>
+        <p>Amount: {{ $purchase->payment_amount }} ₹</p>
         
         <hr class="line-dot">
         <h5>"THANK YOU"</h5>

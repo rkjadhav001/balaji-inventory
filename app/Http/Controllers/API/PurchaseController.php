@@ -64,6 +64,7 @@ class PurchaseController extends Controller
             $purchase->total_gst_amount = $request->total_gst_amount;
             $purchase->total_payable_amount = $request->total_payable_amount;
             $purchase->adjustment = $request->adjustment ?? 0;
+            $purchase->ref_no = $request->ref_no ?? null;
             if ($request->payment_type) {
                 if ($request->payment_type == 'bank') {
                     $purchase->payment_type = $request->payment_type;
@@ -199,6 +200,18 @@ class PurchaseController extends Controller
             $purchase->total_box = $request->total_box;
             $purchase->total_patti = $request->total_patti;
             $purchase->total_packet = $request->total_packet;
+            $purchase->adjustment = $request->adjustment ?? 0;
+            $purchase->ref_no = $request->ref_no ?? null;
+              if ($request->payment_type) {
+                if ($request->payment_type == 'bank') {
+                    $purchase->payment_type = $request->payment_type;
+                    $purchase->payment_amount = $request->payment_amount;
+                    $purchase->bank_id = $request->bank_id;
+                } else {
+                    $purchase->payment_type = $request->payment_type;
+                    $purchase->payment_amount = $request->payment_amount;
+                }
+            }
             $purchase->save();
         
             foreach ($request->products as $product) {
@@ -241,8 +254,80 @@ class PurchaseController extends Controller
                     $purchaseProduct->party_id = $request->party_id;
                     $purchaseProduct->save();
                 }
-                
             }
+
+
+            $transaction = Transaction::where('bill_id', $purchase->id)->where('transaction_type', 'purchase')->first();
+            if ($transaction) {
+                $pending_amount = $request->total_payable_amount - $request->payment_amount;
+                if ($pending_amount == 0) {
+                    $transaction->type = 'purchase paid';
+                } else {
+                    $transaction->type = 'purchase partial';
+                }
+                $transaction->date = $request->date;
+                $transaction->party_id = $request->party_id;
+                $transaction->total_amount = $request->total_payable_amount;
+                $transaction->pending_amount = $pending_amount;
+                $transaction->bill_id = $purchase->id;
+                $transaction->is_bill = 1;
+                $transaction->transaction_type = 'purchase';
+                $transaction->save();
+            } else {
+                $transaction1 = new Transaction();
+                $transaction1->type = 'purchase unpaid';
+                $transaction1->date = $request->date;
+                $transaction1->party_id = $request->party_id;
+                $transaction1->total_amount = $request->total_payable_amount;
+                $transaction1->pending_amount = $request->total_payable_amount;
+                $transaction1->bill_id = $purchase->id;
+                $transaction1->is_bill = 1;
+                $transaction1->transaction_type = 'purchase';
+                $transaction1->save();
+            }
+
+            if ($request->payment_amount > 0) {
+                if ($request->payment_type == 'bank') {
+                    $bankTransaction = BankTransaction::where('withdraw_from', $purchase->id)
+                    ->where('p_type', 'purchase_bill')
+                    ->first();
+                    $bank = Banks::where('id', $request->bank_id)->first();
+                    if ($bankTransaction) {
+                        $bankTransaction = BankTransaction::find($bankTransaction->id);
+                        $oldPending = $bankTransaction->balance;
+                    } else {
+                        $bankTransaction = new BankTransaction();
+                        $oldPending = 0;
+                    }
+                    $bank->total_amount += $request->payment_amount;
+                    $bankTransaction->withdraw_from = $bank->id;
+                    $bankTransaction->p_type = 'purchase_bill';
+                    $bankTransaction->deposit_to = $purchase->id;
+                    $bankTransaction->balance = $request->payment_amount;
+                    $bankTransaction->date = $request->date;
+                    $bankTransaction->save();
+                    $finalBankAmount = $bank->total_amount + $oldPending;
+                    $bank->total_amount = $finalBankAmount - $request->payment_amount;
+                    $bank->save();
+                } else {
+                    $bankTransaction = BankTransaction::where('withdraw_from', $purchase->id)
+                    ->where('p_type', 'purchase_bill')
+                    ->first();
+                    if ($bankTransaction) {
+                        $bankTransaction = BankTransaction::find($bankTransaction->id);
+                    } else {
+                        $bankTransaction = new BankTransaction();
+                    }
+                    // $bankTransaction = new BankTransaction();
+                    $bankTransaction->withdraw_from = "Cash";
+                    $bankTransaction->p_type = 'purchase_cash';
+                    $bankTransaction->deposit_to = $purchase->id;
+                    $bankTransaction->balance = $request->payment_amount;
+                    $bankTransaction->date = $request->date;
+                    $bankTransaction->save();
+                }
+            }
+
             return response()->json(['success' => 'true', 'data' => $purchase, 'message' => 'Purchase created successfully'], 200);
         } else {
             $errors = [];
@@ -299,6 +384,17 @@ class PurchaseController extends Controller
             $purchase->total_box = $request->total_box;
             $purchase->total_patti = $request->total_patti;
             $purchase->total_packet = $request->total_packet;
+            // $purchase->payment_type = $request->payment_type;
+            if ($request->payment_type) {
+                if ($request->payment_type == 'bank') {
+                    $purchase->payment_type = $request->payment_type;
+                    $purchase->payment_amount = $request->payment_amount;
+                    $purchase->bank_id = $request->bank_id;
+                } else {
+                    $purchase->payment_type = $request->payment_type;
+                    $purchase->payment_amount = $request->payment_amount;
+                }
+            }
             $purchase->save();
         
             foreach ($request->products as $product) {
@@ -336,7 +432,30 @@ class PurchaseController extends Controller
                 $transaction->save();
             }
 
-            return response()->json(['success' => 'true', 'data' => $purchase, 'message' => 'Purchase created successfully'], 200);
+            if ($request->payment_amount > 0) {
+                if ($request->payment_type == 'bank') {
+                    $bank = Banks::where('id', $request->bank_id)->first();
+                    $bankTransaction = new BankTransaction();
+                    $bankTransaction->withdraw_from = $bank->id;
+                    $bankTransaction->p_type = 'purchase_return_bank';
+                    $bankTransaction->deposit_to = $purchase->id;
+                    $bankTransaction->balance = $request->payment_amount;
+                    $bankTransaction->date = $request->date;
+                    $bankTransaction->save();
+                    $bank->total_amount += $request->payment_amount;
+                    $bank->save();
+                } else {
+                    $bankTransaction = new BankTransaction();
+                    $bankTransaction->withdraw_from = "Cash";
+                    $bankTransaction->p_type = 'purchase_return_cash';
+                    $bankTransaction->deposit_to = $purchase->id;
+                    $bankTransaction->balance = $request->payment_amount;
+                    $bankTransaction->date = $request->date;
+                    $bankTransaction->save();
+                }
+            }
+
+            return response()->json(['success' => 'true', 'data' => $purchase, 'message' => 'Purchase Return created successfully'], 200);
         } else {
             $errors = [];
             array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
@@ -425,6 +544,16 @@ class PurchaseController extends Controller
             $purchase->total_box = $request->total_box;
             $purchase->total_patti = $request->total_patti;
             $purchase->total_packet = $request->total_packet;
+            if ($request->payment_type) {
+                if ($request->payment_type == 'bank') {
+                    $purchase->payment_type = $request->payment_type;
+                    $purchase->payment_amount = $request->payment_amount;
+                    $purchase->bank_id = $request->bank_id;
+                } else {
+                    $purchase->payment_type = $request->payment_type;
+                    $purchase->payment_amount = $request->payment_amount;
+                }
+            }
             $purchase->save();
         
             foreach ($request->products as $product) {
@@ -480,6 +609,49 @@ class PurchaseController extends Controller
                 $transaction->transaction_type = 'purchase return';
                 $transaction->save();
             }
+            
+            if ($request->payment_amount > 0) {
+                if ($request->payment_type == 'bank') {
+                    $bankTransaction = BankTransaction::where('deposit_to', $purchase->id)
+                    ->where('p_type', 'purchase_return_bank')
+                    ->first();
+                    $bank = Banks::where('id', $request->bank_id)->first();
+                    if ($bankTransaction) {
+                        $bankTransaction = BankTransaction::find($bankTransaction->id);
+                        $oldPending = $bankTransaction->balance;
+                    } else {
+                        $bankTransaction = new BankTransaction();
+                        $oldPending = 0;
+                    }
+                    $bank->total_amount += $request->payment_amount;
+                    $bankTransaction->withdraw_from = $bank->id;
+                    $bankTransaction->p_type = 'purchase_return_bank';
+                    $bankTransaction->deposit_to = $purchase->id;
+                    $bankTransaction->balance = $request->payment_amount;
+                    $bankTransaction->date = $request->date;
+                    $bankTransaction->save();
+
+                    $finalBankAmount = $bank->total_amount - $oldPending;
+                    $bank->total_amount = $finalBankAmount + $request->payment_amount;
+                    $bank->save();
+                } else {
+                    $bankTransaction = BankTransaction::where('deposit_to', $purchase->id)
+                    ->where('p_type', 'purchase_return_cash')
+                    ->first();
+                    if ($bankTransaction) {
+                        $bankTransaction = BankTransaction::find($bankTransaction->id);
+                    } else {
+                        $bankTransaction = new BankTransaction();
+                    }
+                    // $bankTransaction = new BankTransaction();
+                    $bankTransaction->withdraw_from = "Cash";
+                    $bankTransaction->p_type = 'purchase_return_cash';
+                    $bankTransaction->deposit_to = $purchase->id;
+                    $bankTransaction->balance = $request->payment_amount;
+                    $bankTransaction->date = $request->date;
+                    $bankTransaction->save();
+                }
+            }
             return response()->json(['success' => 'true', 'data' => $purchase, 'message' => 'Purchase Invoice updated successfully'], 200);
         } else {
             $errors = [];
@@ -507,5 +679,77 @@ class PurchaseController extends Controller
         }
     }
     
+    public function deletePurchaseTransaction(Request $request, $id) {
+        $data = $this->get_admin_by_token($request);
+        if ($data) {
+            $transaction = Transaction::where('id', $id)->where('transaction_type', 'purchase')->first();
+            if ($transaction) {
+                $purchase = PurchaseInvoice::where('id', $transaction->bill_id)->first();
+                $purchaseProducts = PurchaseProduct::where('purchase_invoice_id', $transaction->bill_id)->get();
+                foreach ($purchaseProducts as $purchaseProduct) {
+                    $findProduct = Product::where('id', $purchaseProduct->product_id)->first();
+                    $findProduct->available_stock -= $purchaseProduct->qty;
+                    $findProduct->save();
+                    $purchaseProduct->delete();
+                }
+                if ($purchase->payment_type == 'bank') {
+                    $bank = Bank::where('id', $purchase->bank_id)->first();
+                    $bank->total_amount += $purchase->payment_amount;
+                    $bank->save();
+                    $bankTransaction = BankTransaction::where('deposit_to', $purchase->id)->where('p_type', 'purchase')->delete();
+                } else {
+                    $bankTransaction = BankTransaction::where('deposit_to', $purchase->id)->where('p_type', 'purchase_cash')->delete();    
+                }
+                $transaction->delete();
+                $purchase->delete();
+                return response()->json(['success' => 'true', 'data' => $purchase, 'message' => 'Purchase Invoice deleted successfully'], 200);
+            } else {
+                return response()->json(['success' => 'false', 'message' => 'Purchase Transaction Not Found'], 200);
+            }
+        } else {
+            $errors = [];
+            array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
+            return response()->json([
+                'success' => 'false',
+                'data' => $errors
+            ], 200);
+        }
+    }
 
+    public function purchaseReturnDelete(Request $request, $id) {
+        $data = $this->get_admin_by_token($request);
+        if ($data) {
+            $transaction = Transaction::where('id', $id)->where('transaction_type', 'purchase return')->first();
+            if ($transaction) {
+                $purchase = PurchaseReturnInvoice::where('id', $transaction->bill_id)->first();
+                $purchaseProducts = PurchaseReturnProduct::where('purchase_return_invoice_id', $transaction->bill_id)->get();
+                foreach ($purchaseProducts as $purchaseProduct) {
+                    $findProduct = Product::where('id', $purchaseProduct->product_id)->first();
+                    $findProduct->available_stock += $purchaseProduct->qty;
+                    $findProduct->save();
+                    $purchaseProduct->delete();
+                }
+                if ($purchase->payment_type == 'bank') {
+                    $bank = Bank::where('id', $purchase->bank_id)->first();
+                    $bank->total_amount -= $purchase->payment_amount;
+                    $bank->save();
+                    $bankTransaction = BankTransaction::where('deposit_to', $purchase->id)->where('p_type', 'purchase_return_bank')->delete();
+                } else {
+                    $bankTransaction = BankTransaction::where('deposit_to', $purchase->id)->where('p_type', 'purchase_return_cash')->delete();    
+                }
+                $transaction->delete();
+                $purchase->delete();
+                return response()->json(['success' => 'true', 'data' => $purchase, 'message' => 'Purchase Return Invoice deleted successfully'], 200);
+            } else {
+                return response()->json(['success' => 'false', 'message' => 'Purchase Return Transaction Not Found'], 200);
+            }
+        } else {
+            $errors = [];
+            array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
+            return response()->json([
+                'success' => 'false',
+                'data' => $errors
+            ], 200);
+        }
+    }
 }

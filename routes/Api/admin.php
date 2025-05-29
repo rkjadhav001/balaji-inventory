@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\API\AppConfigController;
 use App\Http\Controllers\API\AreaController;
 use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\API\CategoryController;
@@ -95,6 +96,7 @@ Route::group(['namespace' => 'Api', 'prefix' => 'product'], function () {
     Route::post('update/{id}',[ProductController::class, 'update']);
     Route::post('status',[ProductController::class, 'status']);
     Route::get('scan',[ProductController::class, 'scanProduct']);
+    Route::post('sorting-update',[ProductController::class, 'sortingUpdate']);
 });
 
 #Purchase
@@ -104,6 +106,7 @@ Route::group(['namespace' => 'Api', 'prefix' => 'purchase'], function () {
     Route::get('view/{id}',[PurchaseController::class, 'view']);
     Route::post('update/{id}',[PurchaseController::class, 'update']);
     Route::get('product-list',[PurchaseController::class, 'purchaseProductList']);
+    Route::get('delete/{id}',[PurchaseController::class, 'deletePurchaseTransaction']);
 });
 
 #Stock Management
@@ -148,6 +151,7 @@ Route::group(['namespace' => 'Api', 'prefix' => 'supplier'], function () {
     Route::post('create',[SupplierController::class, 'create']);
     Route::post('update/{id}',[SupplierController::class, 'update']);
     Route::post('status',[SupplierController::class, 'status']);
+    Route::get('delete/{id}',[SupplierController::class, 'delete']);
     Route::get('bill-list',[SupplierController::class, 'bills']);
 });
 
@@ -203,6 +207,8 @@ Route::group(['namespace' => 'Api', 'prefix' => 'financial-report'], function ()
     Route::get('expanse-list',[FinancialReportController::class, 'expenseList']);
     Route::get('expanse-detail',[FinancialReportController::class, 'expenseDetail']);
     Route::post('expanse-update/{id}',[FinancialReportController::class, 'updateExpense']);
+    Route::get('expanse-delete/{id}',[FinancialReportController::class, 'deleteExpense']);
+
 
 });
 
@@ -264,6 +270,7 @@ Route::group(['namespace' => 'Api', 'prefix' => 'purchase-return'], function () 
     Route::post('store',[PurchaseController::class, 'returnStore']);
     Route::get('view/{id}',[PurchaseController::class, 'returnView']);
     Route::post('update/{id}',[PurchaseController::class, 'returnUpdate']);
+    Route::get('delete/{id}',[PurchaseController::class, 'purchaseReturnDelete']);
 });
 
 
@@ -273,4 +280,11 @@ Route::group(['namespace' => 'Api', 'prefix' => 'due-payment'], function () {
     Route::post('store',[FinancialReportController::class, 'duePaymentStore']);
     Route::get('view/{id}',[FinancialReportController::class, 'duePaymentView']);
     Route::post('update/{id}',[FinancialReportController::class, 'duePaymentUpdate']);
+    Route::get('delete/{id}',[FinancialReportController::class, 'duePaymentDelete']);
+});
+
+#App Config
+Route::group(['namespace' => 'Api', 'prefix' => 'app-config'], function () {
+    Route::get('get',[AppConfigController::class, 'getAppConfig']);
+    Route::post('update',[AppConfigController::class, 'updateAppConfig']);
 });

@@ -51,6 +51,7 @@ class DashboardController extends Controller
             $cashAmount = CollectionType::where('name', 'Cash')->sum('amount');
             $cashAmountLess = BankTransaction::where('p_type', 'cash_to_bank')->sum('balance');
             $cashAmountPlus = BankTransaction::where('p_type', 'bank_to_cash')->sum('balance');
+            $cashAmountExpenseMinus = BankTransaction::where('p_type', 'expense_payment_cash')->sum('balance');
             $paymentInAmountPlus = PaymentInType::where('name', 'Cash')->sum('amount');
             // $gpayAmount = CollectionType::where('name', 'G-Pay')->sum('amount');
             $gpayAmount = Banks::sum('total_amount');
@@ -62,7 +63,7 @@ class DashboardController extends Controller
                 'supplierOrder' => $supplierOrder,
                 'wholesalerNewOrder' => $wholesalerNewOrder,
                 'wholesalerOrder' => $wholesalerOrder,
-                'cashAmount' => ($cashAmount - $cashAmountLess) + $cashAmountPlus + $paymentInAmountPlus,
+                'cashAmount' => ($cashAmount - $cashAmountLess) + $cashAmountPlus + $paymentInAmountPlus - $cashAmountExpenseMinus,
                 'gpayAmount' => $gpayAmount,
                 'expnaseAmount' => $expnaseAmount
             ];

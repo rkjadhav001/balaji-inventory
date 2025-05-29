@@ -27,6 +27,11 @@ class Product extends Model
         return $this->belongsTo(Category::class,'category_id','id');
     }
 
+    public function tax()
+    {
+        return $this->belongsTo(Tax::class,'tax_id','id');
+    }
+
     public function getStockDetailsAttribute()
     {
         // $remainingStock = $this->available_stock;
