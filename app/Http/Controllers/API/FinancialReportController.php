@@ -7,6 +7,7 @@ use App\Models\BillCollection;
 use App\Models\CollectionType;
 use App\Models\Expense;
 use App\Models\ExpenseDetail;
+use App\Models\ExpanseCategory;
 use App\Models\Order;
 use App\Models\OrderDetial;
 use App\Models\PaymentInBill;
@@ -65,16 +66,16 @@ class FinancialReportController extends Controller
                 $purchaseInvoicePayment = PurchaseInvoice::where('party_id', $supplier->id)->sum('payment_amount');
                 $purchaseReturnInvoice = PurchaseReturnInvoice::where('party_id', $supplier->id)->sum('total_payable_amount');
                 $duePaymentCash = DuePayment::where('party_id', $supplier->id)->sum('cash_amount');
-                $duePaymentBank = DuePayment::where('party_id', $supplier->id)->sum('cash_amount');
+                $duePaymentBank = DuePayment::where('party_id', $supplier->id)->sum('bank_amount');
                 $paymentIn = Transaction::where('party_id', $supplier->id)->where('transaction_type', 'payment_in')->sum('total_amount');
                 $supplier->sale = $sale;
                 $supplier->collection = $collection;
                 // $supplier->pending = $sale - $collection - $returnBill - $expanses;
-                $supplier->pending = $sale - $collection - $paymentIn - $returnBill - $expanses - $creditTransfer + $debitTransfer - $purchaseInvoice - $purchaseInvoicePayment + $purchaseReturnInvoice - $duePaymentCash - $duePaymentBank;
+                $supplier->pending = $sale - $collection - $paymentIn - $returnBill - $expanses + $creditTransfer - $debitTransfer - $purchaseInvoice - $purchaseInvoicePayment + $purchaseReturnInvoice + $duePaymentCash + $duePaymentBank;
                 $supplier->outstanding = 0.00;
                 $supplier->return = $returnBill;
                 $netReceivable = $sale - $collection - $paymentIn - $returnBill - $expanses - $creditTransfer + $debitTransfer;
-                $netPayable = $purchaseInvoice - $purchaseInvoicePayment + $purchaseReturnInvoice - $duePaymentCash - $duePaymentBank;
+                $netPayable = $purchaseInvoice - $purchaseInvoicePayment - $purchaseReturnInvoice - $duePaymentCash - $duePaymentBank;
             }
             return response()->json(['success' => 'true','data' => $suppliers, 'net_receivable' => $netReceivable, 'net_payable' => $netPayable,'message' => 'Supplier List Fetch successfully'], 200);
         } else {
@@ -427,7 +428,7 @@ class FinancialReportController extends Controller
                 'orderProduct.product' => function ($query) {
                     $query->select('*'); 
                 }
-            ])->where('order_type', 'retailer')->where('id', $id)->first();
+            ])->where('id', $id)->first();
             if ($order) {
                 return response()->json(['success' => 'true', 'data' => $order, ' message' => 'Order View Successfully'], 200);
             } else {
@@ -459,6 +460,19 @@ class FinancialReportController extends Controller
             }
             $mainOrderFind = Order::where('id', $orderID)->first();
             $order = new ReturnOrder();
+            // Get the last created order that matches the prefix pattern
+            $prefix = 'SR-';
+            $lastOrder = ReturnOrder::where('bill_id', 'LIKE', "{$prefix}%")
+                ->orderBy('id', 'desc')
+                ->first();
+            if ($lastOrder) {
+                $lastNumber = (int) str_replace($prefix, '', $lastOrder->bill_id);
+                $orderNumber = $lastNumber + 1;
+            } else {
+                $orderNumber = 1;
+            }
+            // Generate the bill_id
+            $order->bill_id = $prefix . $orderNumber;
             $order->order_id = $orderID;
             $order->supplier_id = $mainOrderFind->supplier_id;
             $order->total_box = $totalBox;
@@ -518,6 +532,7 @@ class FinancialReportController extends Controller
             $returnTransaction->type = 'sale return';
             $returnTransaction->party_id = $mainOrderFind->supplier_id;
             $returnTransaction->bill_id = $order->id;
+            $returnTransaction->transaction_no = $order->bill_id;
             $returnTransaction->save();
 
             return response()->json(['success' => 'true', 'data' => $order, 'message' => 'Order Return successfully'], 200);
@@ -556,7 +571,7 @@ class FinancialReportController extends Controller
                     $paymentIn = PaymentInBill::where('bill_id', $id)->get();
                     $paymentInAmount = PaymentInBill::where('bill_id', $id)->sum('amount');
                     $creditTransfer = TransferAmount::with('creditedParty', 'debitedParty')->where('to_transfer_id', $order->supplier_id)->where('type', 'bill')->where('bill_id', $id)->sum('amount');
-                    $creditTransferData = TransferAmount::where('to_transfer_id', $order->supplier_id)->where('type', 'bill')->where('bill_id', $id)->get();
+                    $creditTransferData = TransferAmount::with('debitedParty','creditedParty')->where('to_transfer_id', $order->supplier_id)->where('type', 'bill')->where('bill_id', $id)->get();
                     $debitTransfer = TransferAmount::where('from_transfer_id', $order->supplier_id)->where('type', 'bill')->where('from_bill_id', $id)->sum('amount');
                     $debitTransferData = TransferAmount::with('debitedParty','creditedParty')->where('from_transfer_id', $order->supplier_id)->where('type', 'bill')->where('from_bill_id', $id)->get();
     
@@ -583,7 +598,7 @@ class FinancialReportController extends Controller
                     $paymentIn = PaymentInBill::where('bill_id', $id)->get();
                     $paymentInAmount = PaymentInBill::where('bill_id', $id)->sum('amount');
                     $creditTransfer = TransferAmount::with('creditedParty', 'debitedParty')->where('to_transfer_id', $order->supplier_id)->where('type', 'bill')->where('bill_id', $id)->sum('amount');
-                    $creditTransferData = TransferAmount::where('to_transfer_id', $order->supplier_id)->where('type', 'bill')->where('bill_id', $id)->get();
+                    $creditTransferData = TransferAmount::with('debitedParty','creditedParty')->where('to_transfer_id', $order->supplier_id)->where('type', 'bill')->where('bill_id', $id)->get();
                     $debitTransfer = TransferAmount::where('from_transfer_id', $order->supplier_id)->where('type', 'bill')->where('from_bill_id', $id)->sum('amount');
                     $debitTransferData = TransferAmount::with('debitedParty','creditedParty')->where('from_transfer_id', $order->supplier_id)->where('type', 'bill')->where('from_bill_id', $id)->get();
     
@@ -712,12 +727,26 @@ class FinancialReportController extends Controller
         $data = $this->get_admin_by_token($request);
         if ($data) {
             $expense = new Expense();
+            $prefix = 'EX-';
+            $lastOrder = Expense::where('bill_id', 'LIKE', "{$prefix}%")
+                ->orderBy('id', 'desc')
+                ->first();
+            if ($lastOrder) {
+                $lastNumber = (int) str_replace($prefix, '', $lastOrder->bill_id);
+                $orderNumber = $lastNumber + 1;
+            } else {
+                $orderNumber = 1;
+            }
+            // Generate the bill_id
+            $expense->bill_id = $prefix . $orderNumber;
             $expense->date = $request->date;
             $expense->name = $request->name;
             $expense->payment_type = $request->payment_type;
             $expense->total_amount = $request->total_amount;
             $expense->note = $request->note;
             $expense->type = 'category';
+            $expense->cash_payment = $request->cash_payment;
+            $expense->bank_payment = $request->bank_payment;
             // $expense->created_by = $data['data']->id;
             $expense->save();
 
@@ -729,6 +758,9 @@ class FinancialReportController extends Controller
             $transaction->type = 'expense';
             $transaction->bill_id = $expense->id;
             $transaction->is_bill = 1;
+            $transaction->transaction_no = $expense->bill_id;
+            $transaction->date = $request->date;
+            
             $transaction->save();
 
             
@@ -744,26 +776,51 @@ class FinancialReportController extends Controller
                 $expanseType->save();
             }
 
-            if ($request->payment_type == 'cash') {
-                  $bankTransactionCash = new BankTransaction();
+            if ($request->payment_type == 'manual') {
+                if ($request->cash_payment > 0) {
+                    $bankTransactionCash = new BankTransaction();
+                    $bankTransactionCash->withdraw_from = "Cash";
+                    $bankTransactionCash->p_type = 'expense_payment_cash';
+                    $bankTransactionCash->deposit_to = $expense->id;
+                    $bankTransactionCash->balance = $request->cash_payment;
+                    $bankTransactionCash->date = $request->date ?? now();
+                    $bankTransactionCash->save();
+                } 
+                if ($request->bank_payment > 0) {
+                    $bank = Banks::where('is_default', 1)->first();
+                    $bankTransactionCash = new BankTransaction();
+                    $bankTransactionCash->withdraw_from = $bank->id;
+                    $bankTransactionCash->p_type = 'expense_payment_bank';
+                    $bankTransactionCash->deposit_to = $expense->id;
+                    $bankTransactionCash->balance = $request->bank_payment;
+                    $bankTransactionCash->date = $request->date ?? now();
+                    $bankTransactionCash->save();
+                    $bank->total_amount = $bank->total_amount - $request->bank_payment;
+                    $bank->save();
+                }
+            } else {
+                if ($request->payment_type == 'cash') {
+                    $bankTransactionCash = new BankTransaction();
                     $bankTransactionCash->withdraw_from = "Cash";
                     $bankTransactionCash->p_type = 'expense_payment_cash';
                     $bankTransactionCash->deposit_to = $expense->id;
                     $bankTransactionCash->balance = $request->total_amount;
                     $bankTransactionCash->date = $request->date ?? now();
                     $bankTransactionCash->save();
-            } else {
-                $bank = Banks::where('is_default', 1)->first();
-                $bankTransactionCash = new BankTransaction();
-                $bankTransactionCash->withdraw_from = $bank->id;
-                $bankTransactionCash->p_type = 'expense_payment_bank';
-                $bankTransactionCash->deposit_to = $expense->id;
-                $bankTransactionCash->balance = $request->total_amount;
-                $bankTransactionCash->date = $request->date ?? now();
-                $bankTransactionCash->save();
-                $bank->total_amount = $bank->total_amount - $request->total_amount;
-                $bank->save();
+                } else {
+                    $bank = Banks::where('is_default', 1)->first();
+                    $bankTransactionCash = new BankTransaction();
+                    $bankTransactionCash->withdraw_from = $bank->id;
+                    $bankTransactionCash->p_type = 'expense_payment_bank';
+                    $bankTransactionCash->deposit_to = $expense->id;
+                    $bankTransactionCash->balance = $request->total_amount;
+                    $bankTransactionCash->date = $request->date ?? now();
+                    $bankTransactionCash->save();
+                    $bank->total_amount = $bank->total_amount - $request->total_amount;
+                    $bank->save();
+                }
             }
+
             
             return response()->json(['success' => 'true', 'data' => $expense, 'message' => 'Expanses Add successfully'], 200);
         } else {
@@ -808,18 +865,25 @@ class FinancialReportController extends Controller
                 }
                 
             } elseif ($request->type == 'category') {
-                $expense = Expense::select('type', 'name', DB::raw('SUM(total_amount) as total_amount'))
-                ->where('type', $request->type)
-                ->groupBy('type', 'name')
-                ->orderByDesc('id')
-                ->paginate($perPage);
+               
+                $expense = ExpanseCategory::select('name', 'type')->paginate($perPage);
                 foreach ($expense as $key => $expenses) {
-                    // return $expenses->id;
+                    $expenses->type = $expenses->type ?? 'category';
+                    $expenses->total_amount = Expense::where('name', $expenses->name)->sum('total_amount');
                     $getAllExpanse = Expense::where('name', $expenses->name)->get();
                     // $expenseIds = $getAllExpanse->pluck('id')->toArray();
                     // $expenses->expense_items = ExpenseDetail::with('expense')->whereIn('expense_id', $expenseIds)->get();
                     $expenses->expense_items = Expense::where('name', $expenses->name)->get();
                 }
+                // $expense = Expense::select('type', 'name', DB::raw('SUM(total_amount) as total_amount'))
+                // ->where('type', $request->type)
+                // ->groupBy('type', 'name')
+                // ->orderByDesc('id')
+                // ->paginate($perPage);
+                // foreach ($expense as $key => $expenses) {
+                //     $getAllExpanse = Expense::where('name', $expenses->name)->get();
+                //     $expenses->expense_items = Expense::where('name', $expenses->name)->get();
+                // }
             } elseif ($request->type == 'item') {
                 $expense = ExpenseDetail::select('type', DB::raw('SUM(amount) as total_amount'))
                 ->groupBy('type')
@@ -899,56 +963,57 @@ class FinancialReportController extends Controller
         if ($data) {
             $expense = Expense::where('id', $id)->first();
             if ($expense) {
+                // Store old values for transaction reversal
+                $oldExpense = $expense->replicate();
+                
+                // Update expense
                 $expense->date = $request->date;
                 $expense->name = $request->name;
                 $expense->payment_type = $request->payment_type;
                 $expense->total_amount = $request->total_amount;
                 $expense->note = $request->note;
                 $expense->type = $request->type;
+                $expense->cash_payment = $request->cash_payment ?? 0;
+                $expense->bank_payment = $request->bank_payment ?? 0;
                 $expense->save();
-                if ($request->payment_type == 'cash') {
-                    $bankTransactionCashData = BankTransaction::where('p_type', 'expense_payment_cash')->where('deposit_to', $expense->id)->first();
-                    if ($bankTransactionCashData) {
-                        $bankTransactionCash = BankTransaction::find($bankTransactionCashData->id);
-                    } else {
-                        $bankTransactionCash = new BankTransaction();
+
+                // First, reverse old transactions
+                $this->reverseOldTransactions($oldExpense);
+
+                // Handle new transactions based on payment type
+                if ($request->payment_type == 'manual') {
+                    // Manual payment - handle both cash and bank
+                    if ($request->cash_payment > 0) {
+                        $this->createCashTransaction($expense, $request->cash_payment, $request->date);
                     }
-                    $bankTransactionCash->withdraw_from = "Cash";
-                    $bankTransactionCash->p_type = 'expense_payment_cash';
-                    $bankTransactionCash->deposit_to = $expense->id;
-                    $bankTransactionCash->balance = $request->total_amount;
-                    $bankTransactionCash->date = $request->date ?? now();
-                    $bankTransactionCash->save();
+                    
+                    if ($request->bank_payment > 0) {
+                        $this->createBankTransaction($expense, $request->bank_payment, $request->date);
+                    }
                 } else {
-                    $bank = Banks::where('is_default', 1)->first();
-                    $bankTransactionCashData = BankTransaction::where('p_type', 'expense_payment_bank')->where('deposit_to', $expense->id)->first();
-                    if ($bankTransactionCashData) {
-                        $bankTransactionCash = BankTransaction::find($bankTransactionCashData->id);
-                        $oldAmount = $bankTransactionCash->balance;
-                    } else {
-                        $bankTransactionCash = new BankTransaction();
-                        $oldAmount = 0;
+                    // Single payment type - cash or bank
+                    if ($request->payment_type == 'cash') {
+                        $this->createCashTransaction($expense, $request->total_amount, $request->date);
+                    } else if ($request->payment_type == 'bank') {
+                        $this->createBankTransaction($expense, $request->total_amount, $request->date);
                     }
-                    $bankTransactionCash->withdraw_from = $bank->id;
-                    $bankTransactionCash->p_type = 'expense_payment_bank';
-                    $bankTransactionCash->deposit_to = $expense->id;
-                    $bankTransactionCash->balance = $request->total_amount;
-                    $bankTransactionCash->date = $request->date ?? now();
-                    $bankTransactionCash->save();
-                    $finalBankAmount = $bank->total_amount + $oldAmount - $request->total_amount;
-                    $bank->total_amount = $finalBankAmount;
-                    $bank->save();
                 }
-                $transaction = Transaction::where('bill_id', $id)->where('type','expense')->first();
-                $transaction->transaction_type = 'expense';
-                $transaction->party_id = 0;
-                $transaction->total_amount = $request->total_amount;
-                $transaction->pending_amount = $request->total_amount;
-                $transaction->type = 'expense';
-                $transaction->bill_id = $expense->id;
-                $transaction->is_bill = 1;
-                $transaction->save();
                 
+                // Update main transaction record
+                $transaction = Transaction::where('bill_id', $id)->where('type', 'expense')->first();
+                if ($transaction) {
+                    $transaction->transaction_type = 'expense';
+                    $transaction->party_id = 0;
+                    $transaction->total_amount = $request->total_amount;
+                    $transaction->pending_amount = $request->total_amount;
+                    $transaction->type = 'expense';
+                    $transaction->bill_id = $expense->id;
+                    $transaction->is_bill = 1;
+                    $transaction->date = $request->date;
+                    $transaction->save();
+                }
+                
+                // Update expense details
                 ExpenseDetail::where('expense_id', $id)->delete();
                 foreach ($request->expense_types as $expenseType) {
                     $expanseType = new ExpenseDetail();
@@ -958,13 +1023,14 @@ class FinancialReportController extends Controller
                     $expanseType->qty = $expenseType['qty'] ?? null;
                     $expanseType->rate = $expenseType['rate'] ?? null;
                     $expanseType->amount = $expenseType['amount'] ?? 0;
+                    $expanseType->tax_id = $expenseType['tax_id'] ?? 0;
                     $expanseType->save();
                 }
-                return response()->json(['success' => 'true', 'data' => $expense, 'message' => 'Expanses Update successfully'], 200);
+                
+                return response()->json(['success' => 'true', 'data' => $expense, 'message' => 'Expense updated successfully'], 200);
             } else {
-                return response()->json(['success' => 'true', 'data' => [], 'message' => 'Expanses Not Found'], 200);
+                return response()->json(['success' => 'true', 'data' => [], 'message' => 'Expense not found'], 200);
             }
-
         } else {
             $errors = [];
             array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
@@ -972,7 +1038,62 @@ class FinancialReportController extends Controller
                 'success' => 'false',
                 'data' => $errors
             ], 200);
-        } 
+        }
+    }
+
+    private function reverseOldTransactions($oldExpense)
+    {
+        // Reverse old cash transactions
+        $oldCashTransaction = BankTransaction::where('p_type', 'expense_payment_cash')
+            ->where('deposit_to', $oldExpense->id)
+            ->first();
+        if ($oldCashTransaction) {
+            $oldCashTransaction->delete();
+        }
+
+        // Reverse old bank transactions and update bank balance
+        $oldBankTransaction = BankTransaction::where('p_type', 'expense_payment_bank')
+            ->where('deposit_to', $oldExpense->id)
+            ->first();
+        if ($oldBankTransaction) {
+            $bank = Banks::find($oldBankTransaction->withdraw_from);
+            if ($bank) {
+                // Add back the old amount to bank balance
+                $bank->total_amount += $oldBankTransaction->balance;
+                $bank->save();
+            }
+            $oldBankTransaction->delete();
+        }
+    }
+
+    private function createCashTransaction($expense, $amount, $date)
+    {
+        $bankTransactionCash = new BankTransaction();
+        $bankTransactionCash->withdraw_from = "Cash";
+        $bankTransactionCash->p_type = 'expense_payment_cash';
+        $bankTransactionCash->deposit_to = $expense->id;
+        $bankTransactionCash->balance = $amount;
+        $bankTransactionCash->date = $date ?? now();
+        $bankTransactionCash->save();
+    }
+
+    private function createBankTransaction($expense, $amount, $date)
+    {
+        $bank = Banks::where('is_default', 1)->first();
+        if ($bank) {
+
+            $bankTransactionBank = new BankTransaction();
+            $bankTransactionBank->withdraw_from = $bank->id;
+            $bankTransactionBank->p_type = 'expense_payment_bank';
+            $bankTransactionBank->deposit_to = $expense->id;
+            $bankTransactionBank->balance = $amount;
+            $bankTransactionBank->date = $date ?? now();
+            $bankTransactionBank->save();
+
+            // Update bank balance
+            $bank->total_amount -= $amount;
+            $bank->save();
+        }
     }
 
     public function deleteExpense(Request $request, $id)
@@ -1013,20 +1134,28 @@ class FinancialReportController extends Controller
         $data = $this->get_admin_by_token($request);
         if ($data) {
             $PurchaseInvoice = PurchaseInvoice::where('party_id', $request->party_id)->get();
-            if (count($PurchaseInvoice) > 0) {
+            // if (count($PurchaseInvoice) > 0) {
+                $saleMinnusTransactions = Transaction::where('party_id', $request->party_id)
+                ->where('transaction_type', 'sale')
+                ->where('pending_amount', '<', 0)
+                ->sum('pending_amount');
+                $totalPendingAmount = round(abs($saleMinnusTransactions), 2);
                 $PurchaseReturnInvoice = PurchaseReturnInvoice::where('party_id', $request->party_id)->sum('total_payable_amount');
+                $duePaymentCash = DuePayment::where('party_id', $request->party_id)->sum('cash_amount');
+                $duePaymentBank = DuePayment::where('party_id', $request->party_id)->sum('bank_amount');
                 $duePayment = DuePayment::where('party_id', $request->party_id)->get();
-                $paidAmount = $duePayment->sum('paid_amount') + $PurchaseInvoice->sum('payment_amount');
-                $totalAmount = $PurchaseInvoice->sum('total_payable_amount');
+                $paidAmount = $duePaymentCash + $duePaymentBank - $PurchaseReturnInvoice;
+                $totalAmount = $PurchaseInvoice->sum('total_payable_amount') + $totalPendingAmount;
                 $remainingAmount = $totalAmount - $paidAmount;
                 $payment = [
                     'remaining_amount' => $remainingAmount,
                     'paid_amount' => $duePayment->sum('paid_amount') + $PurchaseInvoice->sum('payment_amount') - $PurchaseReturnInvoice,
-                    'total_amount' => $PurchaseInvoice->sum('total_payable_amount'),
+                    'total_amount' => $PurchaseInvoice->sum('total_payable_amount') + $totalPendingAmount,
+                    'lable' => 'Purchase Amount is ' . $PurchaseInvoice->sum('total_payable_amount') . ' and Sale Minus Transaction Amount is ' . $saleMinnusTransactions,
                 ];
-            } else {
-                $payment = (object)[];
-            }
+            // } else {
+            //     $payment = (object)[];
+            // }
             return response()->json(['success' => 'true', 'data' => $payment, 'message' => 'Payment Add successfully'], 200);
         } else {
             $errors = [];
@@ -1043,6 +1172,18 @@ class FinancialReportController extends Controller
         $data = $this->get_admin_by_token($request);
         if ($data) {
             $duePayment = new DuePayment();
+            $prefix = 'PO-';
+            $lastOrder = DuePayment::where('bill_id', 'LIKE', "{$prefix}%")
+                ->orderBy('id', 'desc')
+                ->first();
+            if ($lastOrder) {
+                $lastNumber = (int) str_replace($prefix, '', $lastOrder->bill_id);
+                $orderNumber = $lastNumber + 1;
+            } else {
+                $orderNumber = 1;
+            }
+            // Generate the bill_id
+            $duePayment->bill_id = $prefix . $orderNumber;
             $duePayment->date = $request->date;
             $duePayment->party_id = $request->party_id;
             $duePayment->total_amount = $request->total_amount;
@@ -1073,6 +1214,7 @@ class FinancialReportController extends Controller
             $transaction->bill_id = $duePayment->id;
             $transaction->is_bill = 1;
             $transaction->transaction_type = 'duePayment';
+            $transaction->transaction_no = $duePayment->bill_id;
             $transaction->save();
 
             if ($request->payment_type == 'cash') {

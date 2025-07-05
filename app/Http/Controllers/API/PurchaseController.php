@@ -58,6 +58,18 @@ class PurchaseController extends Controller
         $data = $this->get_admin_by_token($request);
         if ($data) {
             $purchase = new PurchaseInvoice();
+            $prefix = 'P-';
+            $lastOrder = PurchaseInvoice::where('bill_id', 'LIKE', "{$prefix}%")
+                ->orderBy('id', 'desc')
+                ->first();
+            if ($lastOrder) {
+                $lastNumber = (int) str_replace($prefix, '', $lastOrder->bill_id);
+                $orderNumber = $lastNumber + 1;
+            } else {
+                $orderNumber = 1;
+            }
+            // Generate the bill_id
+            $purchase->bill_id = $prefix . $orderNumber;
             $purchase->date = $request->date;
             $purchase->party_id = $request->party_id;
             $purchase->total_purchase_amount = $request->total_purchase_amount;
@@ -83,23 +95,25 @@ class PurchaseController extends Controller
             $purchase->save();
         
             foreach ($request->products as $product) {
-                $purchaseProduct = new PurchaseProduct();
-                $purchaseProduct->purchase_invoice_id = $purchase->id;
-                $purchaseProduct->product_id = $product['product_id'];
-                $findProduct = Product::where('id',$product['product_id'])->first();
-                $purchaseProduct->purchase_price = $product['purchase_price'];
-                $purchaseProduct->box = $product['box'];
-                $boxQty = $product['box'] * $findProduct->packet;
-                $purchaseProduct->patti = $product['patti'];
-                $pattiQty = $product['patti'] * $findProduct->per_patti_piece;
-                $purchaseProduct->packet = $product['packet'];
-                $TotalQty = $boxQty + $pattiQty + $product['packet'];
-                $purchaseProduct->qty = $TotalQty;
-                $findProduct->available_stock += $TotalQty;
-                $findProduct->save();
-                $purchaseProduct->total_amount = $product['total_amount'];
-                $purchaseProduct->party_id = $request->party_id;
-                $purchaseProduct->save();
+                if (($product['box'] ?? 0) > 0 || ($product['patti'] ?? 0) > 0 || ($product['packet'] ?? 0) > 0) {
+                    $purchaseProduct = new PurchaseProduct();
+                    $purchaseProduct->purchase_invoice_id = $purchase->id;
+                    $purchaseProduct->product_id = $product['product_id'];
+                    $findProduct = Product::where('id',$product['product_id'])->first();
+                    $purchaseProduct->purchase_price = $product['purchase_price'];
+                    $purchaseProduct->box = $product['box'];
+                    $boxQty = $product['box'] * $findProduct->packet;
+                    $purchaseProduct->patti = $product['patti'];
+                    $pattiQty = $product['patti'] * $findProduct->per_patti_piece;
+                    $purchaseProduct->packet = $product['packet'];
+                    $TotalQty = $boxQty + $pattiQty + $product['packet'];
+                    $purchaseProduct->qty = $TotalQty;
+                    $findProduct->available_stock += $TotalQty;
+                    $findProduct->save();
+                    $purchaseProduct->total_amount = $product['total_amount'];
+                    $purchaseProduct->party_id = $request->party_id;
+                    $purchaseProduct->save();
+                }
             }
             if ($request->payment_amount > 0) {
                 $transaction = new Transaction();
@@ -116,6 +130,8 @@ class PurchaseController extends Controller
                 $transaction->bill_id = $purchase->id;
                 $transaction->is_bill = 1;
                 $transaction->transaction_type = 'purchase';
+                $transaction->transaction_no = $purchase->bill_id;
+
                 $transaction->save();
             } else {
                 $transaction = new Transaction();
@@ -127,6 +143,7 @@ class PurchaseController extends Controller
                 $transaction->bill_id = $purchase->id;
                 $transaction->is_bill = 1;
                 $transaction->transaction_type = 'purchase';
+                $transaction->transaction_no = $purchase->bill_id;
                 $transaction->save();
             }
 
@@ -213,11 +230,33 @@ class PurchaseController extends Controller
                 }
             }
             $purchase->save();
-        
+            $submittedProductIds = [];
             foreach ($request->products as $product) {
-                if (isset($product['purchase_product_id'])) {
-                    $purchaseProduct = PurchaseProduct::where('id', $product['purchase_product_id'])->first();
+                if (($product['box'] ?? 0) > 0 || ($product['patti'] ?? 0) > 0 || ($product['packet'] ?? 0) > 0) {
+                    $purchaseProduct = PurchaseProduct::where('product_id',$product['product_id'])->where('purchase_invoice_id',$purchase->id)->first();
+                    $submittedProductIds[] = $product['product_id'];
+                    // if (isset($product['purchase_product_id'])) {
                     if ($purchaseProduct) {
+                        // if ($purchaseProduct) {
+                            $purchaseProduct->purchase_invoice_id = $purchase->id;
+                            $purchaseProduct->product_id = $product['product_id'];
+                            $findProduct = Product::where('id',$product['product_id'])->first();
+                            $purchaseProduct->purchase_price = $product['purchase_price'];
+                            $purchaseProduct->box = $product['box'];
+                            $boxQty = $product['box'] * $findProduct->packet;
+                            $purchaseProduct->patti = $product['patti'];
+                            $pattiQty = $product['patti'] * $findProduct->per_patti_piece;
+                            $purchaseProduct->packet = $product['packet'];
+                            $TotalQty = $boxQty + $pattiQty + $product['packet'];
+                            $oldQty = $purchaseProduct->qty;
+                            $purchaseProduct->qty = $TotalQty;
+                            $findProduct->available_stock += $TotalQty - $oldQty;
+                            $findProduct->save();
+                            $purchaseProduct->total_amount = $product['total_amount'];
+                            $purchaseProduct->save();
+                        // }
+                    } else {
+                        $purchaseProduct = new PurchaseProduct();
                         $purchaseProduct->purchase_invoice_id = $purchase->id;
                         $purchaseProduct->product_id = $product['product_id'];
                         $findProduct = Product::where('id',$product['product_id'])->first();
@@ -228,31 +267,26 @@ class PurchaseController extends Controller
                         $pattiQty = $product['patti'] * $findProduct->per_patti_piece;
                         $purchaseProduct->packet = $product['packet'];
                         $TotalQty = $boxQty + $pattiQty + $product['packet'];
-                        $oldQty = $purchaseProduct->qty;
                         $purchaseProduct->qty = $TotalQty;
-                        $findProduct->available_stock += $TotalQty - $oldQty;
+                        $findProduct->available_stock += $TotalQty;
                         $findProduct->save();
                         $purchaseProduct->total_amount = $product['total_amount'];
+                        $purchaseProduct->party_id = $request->party_id;
                         $purchaseProduct->save();
                     }
-                } else {
-                    $purchaseProduct = new PurchaseProduct();
-                    $purchaseProduct->purchase_invoice_id = $purchase->id;
-                    $purchaseProduct->product_id = $product['product_id'];
-                    $findProduct = Product::where('id',$product['product_id'])->first();
-                    $purchaseProduct->purchase_price = $product['purchase_price'];
-                    $purchaseProduct->box = $product['box'];
-                    $boxQty = $product['box'] * $findProduct->packet;
-                    $purchaseProduct->patti = $product['patti'];
-                    $pattiQty = $product['patti'] * $findProduct->per_patti_piece;
-                    $purchaseProduct->packet = $product['packet'];
-                    $TotalQty = $boxQty + $pattiQty + $product['packet'];
-                    $purchaseProduct->qty = $TotalQty;
-                    $findProduct->available_stock += $TotalQty;
-                    $findProduct->save();
-                    $purchaseProduct->total_amount = $product['total_amount'];
-                    $purchaseProduct->party_id = $request->party_id;
-                    $purchaseProduct->save();
+                } 
+
+            }
+            $existingDetails = PurchaseProduct::where('purchase_invoice_id', $purchase->id)->get();
+             foreach ($existingDetails as $detail) {
+                if (!in_array($detail->product_id, $submittedProductIds)) {
+                    $product = Product::find($detail->product_id);
+                    if ($product) {
+                        $product->available_stock -= $detail->qty;
+                        $product->save();
+                    }
+
+                    $detail->delete();
                 }
             }
 
@@ -264,13 +298,17 @@ class PurchaseController extends Controller
                     $transaction->type = 'purchase paid';
                 } else {
                     $transaction->type = 'purchase partial';
-                }
+                } 
+                
                 $transaction->date = $request->date;
                 $transaction->party_id = $request->party_id;
                 $transaction->total_amount = $request->total_payable_amount;
                 $transaction->pending_amount = $pending_amount;
                 $transaction->bill_id = $purchase->id;
                 $transaction->is_bill = 1;
+                if ($transaction->pending_amount === $transaction->total_amount) {
+                    $transaction->type = 'purchase unpaid';
+                }
                 $transaction->transaction_type = 'purchase';
                 $transaction->save();
             } else {
@@ -326,9 +364,15 @@ class PurchaseController extends Controller
                     $bankTransaction->date = $request->date;
                     $bankTransaction->save();
                 }
+            } else {
+                $bankTransaction = BankTransaction::where('withdraw_from', $purchase->id)
+                    ->where('p_type', 'purchase_bill')
+                    ->delete();
+                $cashTransaction = BankTransaction::where('withdraw_from', $purchase->id)
+                    ->where('p_type', 'purchase_bill')->delete();
             }
 
-            return response()->json(['success' => 'true', 'data' => $purchase, 'message' => 'Purchase created successfully'], 200);
+            return response()->json(['success' => 'true', 'data' => $purchase, 'message' => 'Purchase updated successfully'], 200);
         } else {
             $errors = [];
             array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
@@ -375,6 +419,18 @@ class PurchaseController extends Controller
         $data = $this->get_admin_by_token($request);
         if ($data) {
             $purchase = new PurchaseReturnInvoice();
+            $prefix = 'PR-';
+            $lastOrder = PurchaseReturnInvoice::where('bill_id', 'LIKE', "{$prefix}%")
+                ->orderBy('id', 'desc')
+                ->first();
+            if ($lastOrder) {
+                $lastNumber = (int) str_replace($prefix, '', $lastOrder->bill_id);
+                $orderNumber = $lastNumber + 1;
+            } else {
+                $orderNumber = 1;
+            }
+            // Generate the bill_id
+            $purchase->bill_id = $prefix . $orderNumber;
             $purchase->date = $request->date;
             $purchase->party_id = $request->party_id;
             $purchase->total_purchase_amount = $request->total_purchase_amount;
@@ -429,6 +485,7 @@ class PurchaseController extends Controller
                 $transaction->bill_id = $purchase->id;
                 $transaction->is_bill = 1;
                 $transaction->transaction_type = 'purchase return';
+                $transaction->transaction_no = $purchase->bill_id;
                 $transaction->save();
             }
 
@@ -651,6 +708,18 @@ class PurchaseController extends Controller
                     $bankTransaction->date = $request->date;
                     $bankTransaction->save();
                 }
+            } else {
+                $bankTransaction = BankTransaction::where('deposit_to', $purchase->id)
+                    ->where('p_type', 'purchase_return_bank')
+                    ->first();
+                if ($bankTransaction) {
+                    $bank = Banks::where('id', $purchase->bank_id)->first();
+                    $bank->total_amount -= $bankTransaction->balance;
+                    $bank->save();
+                    $bankTransaction->delete();
+                }
+                $bankTransaction = BankTransaction::where('deposit_to', $purchase->id)
+                    ->where('p_type', 'purchase_return_cash')->delete();
             }
             return response()->json(['success' => 'true', 'data' => $purchase, 'message' => 'Purchase Invoice updated successfully'], 200);
         } else {

@@ -240,6 +240,9 @@ class WholesalerController extends Controller
                 foreach ($array as $item) {
                         $orderProduct = $order->orderProduct()->find($item['order_product_id']); 
                         if ($orderProduct) {
+                            $findProduct = Product::find($item['product_id']);
+                            $findProduct->available_stock -= $request['total_qty'] ?? 0;
+                            $findProduct->save();
                             $orderProduct->update([
                                 'box' => $item['box'],
                                 'patti' => $item['patti'],
@@ -250,6 +253,9 @@ class WholesalerController extends Controller
                         } else {
                             $product = Product::find($item['product_id']);
                             if ($product) {
+                                $findProduct = Product::find($product->id);
+                                $findProduct->available_stock -= $request['total_qty'] ?? 0;
+                                $findProduct->save();
                                 $orderProduct = new OrderDetial();
                                 $orderProduct->order_id = $order->id;
                                 $orderProduct->product_id = $product->id;
@@ -275,9 +281,22 @@ class WholesalerController extends Controller
                         }
                 }
             } 
+            $prefix = 'S-';
+            // Get the last created order that matches the prefix pattern
+            $lastOrder = Order::where('bill_id', 'LIKE', "{$prefix}%")
+                ->orderBy('id', 'desc')
+                ->first();
+            if ($lastOrder) {
+                // Extract the numeric part after the prefix
+                $lastNumber = (int) str_replace($prefix, '', $lastOrder->bill_id);
+                $orderNumber = $lastNumber + 1;
+            } else {
+                $orderNumber = 1;
+            }
             $newOrder = Order::findOrFail($request->order_id);
             $newOrder->status = 1;
             $newOrder->supplier_id = $request->supplier_id;
+            $newOrder->bill_id = $prefix . $orderNumber;
             $newOrder->save();
 
             
@@ -325,6 +344,7 @@ class WholesalerController extends Controller
                 $transaction->transaction_type = 'sale';
                 $transaction->bill_id = $order->id;
                 $transaction->is_bill = 1;
+                $transaction->transaction_no = $newOrder->bill_id;
                 $transaction->save();
             } else {
                 $transaction = new Transaction();
@@ -335,6 +355,7 @@ class WholesalerController extends Controller
                 $transaction->bill_id = $order->id;
                 $transaction->is_bill = 1;
                 $transaction->transaction_type = 'sale';
+                $transaction->transaction_no = $newOrder->bill_id;
                 $transaction->save();
             }
 
@@ -390,6 +411,25 @@ class WholesalerController extends Controller
                 Order::where('id',$order->id)->update(['status' => 2]);
 
                 return response()->json(['success' => 'true', 'message' => 'Order Cancel successfully']);
+        } else {
+            $errors = [];
+            array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
+            return response()->json([
+                'success' => 'false',
+                'data' => $errors
+            ], 200);
+        }
+    }
+
+    public function pendingToOrder(Request $request){
+        $data = $this->get_admin_by_token($request);
+        if ($data) {
+            $order = Order::where('id', $request->order_id)->first();
+            if(empty($order)){ 
+                return response()->json(['success' => 'false',   'message' => 'Not Order Found'], 200);
+            }
+            Order::where('id',$order->id)->update(['status' => 0]);
+            return response()->json(['success' => 'true', 'data' => $order, 'message' => 'Order Status Update Successfully'], 200);
         } else {
             $errors = [];
             array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);

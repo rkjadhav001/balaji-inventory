@@ -10,7 +10,7 @@ class AppConfigController extends Controller
 {
     public function getAppConfig(Request $request)
     {
-        $config = AppConfig::whereIn('name', ['contact_number','name'])->get();
+        $config = AppConfig::whereIn('name', ['contact_number','name', 'address', 'state_id'])->get();
         if ($config) {
             return response()->json(['status' => true, 'data' => $config]);
         } else {
@@ -19,13 +19,14 @@ class AppConfigController extends Controller
     }
     public function updateAppConfig(Request $request)
     {
-        $config = AppConfig::where('name', 'contact_number')->first();
-        if ($config) {
-            $config->value = $request->value;
-            $config->save();
-            return response()->json(['status' => true, 'message' => 'Config updated successfully']);
-        } else {
-            return response()->json(['status' => false, 'message' => 'Config not found']);
+        $data = $request->only(['contact_number', 'name', 'address', 'state_id']);
+        foreach ($data as $key => $value) {
+            $config = AppConfig::where('name', $key)->first();
+            if ($config) {
+                $config->value = $value;
+                $config->save();
+            }
         }
+        return response()->json(['status' => true, 'message' => 'Configs updated successfully']);
     }
 }

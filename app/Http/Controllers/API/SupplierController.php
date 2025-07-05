@@ -7,6 +7,9 @@ use App\Models\BillCollection;
 use App\Models\Expense;
 use App\Models\Order;
 use App\Models\ReturnOrder;
+use App\Models\PurchaseInvoice;
+use App\Models\PurchaseOrder;
+use App\Models\PurchaseReturnInvoice;
 use App\Models\Supplier;
 use App\Models\PaymentInBill;
 use App\Models\TransferAmount;
@@ -140,6 +143,13 @@ class SupplierController extends Controller
         $data = $this->get_admin_by_token($request);
         if ($data) {
             $supplier = Supplier::find($id);
+            $order = Order::where('supplier_id', $id)->count();
+            $returnOrder = ReturnOrder::where('supplier_id', $id)->count();
+            $purchase = PurchaseInvoice::where('party_id', $id)->count();
+            $purchaseReturn = PurchaseReturnInvoice::where('party_id', $id)->count();
+            if ($order > 0 || $returnOrder > 0 || $purchase > 0 || $purchaseReturn > 0 ) {
+                return response()->json(['success' => 'false','message' => 'Cannot delete this party because related transactions exist.'], 200);
+            }
             if (!$supplier) {
                 return response()->json(['success' => 'false','message' => 'Party not found'], 200);
             }

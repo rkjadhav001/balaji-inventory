@@ -18,6 +18,10 @@ class Order extends Model
         'final_amount',
     ];
 
+    protected $casts = [
+        'date' => 'datetime:Y-m-d',
+    ];
+
     public function wholesaler()
     {
         return $this->belongsTo(Supplier::class,'wholesaler_id', 'id');

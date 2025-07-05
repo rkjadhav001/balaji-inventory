@@ -10,7 +10,7 @@
         body {
             font-family: Arial, sans-serif;
             font-size: 12px;
-            width: 58mm;
+            width: 80mm;
             margin: 0 auto;
             text-align: center;
         }
@@ -19,7 +19,7 @@
             padding: 5px;
         }
 
-        h2, h5 {
+        h2, h5, h3 {
             margin: 3px 0;
         }
 
@@ -54,7 +54,7 @@
 
         @media print {
             body {
-                width: 58mm;
+                width: 75mm;
             }
         }
         @media print {
@@ -65,7 +65,7 @@
 
             
             body {
-                width: 58mm;
+                width: 75mm;
                 /* margin: 0; */
             }
             
@@ -96,83 +96,204 @@
 <body>
     <button onclick="printInvoice()" id="print" class="btn btn-primary">Print</button>
     <div class="invoice-container" id="invoice">
-        <h2>Balaji</h2>
-        <h5>Vadodara Halol Toll Road, At. Kotambi Ta. Waghodia, Vadodara</h5>
-        <h5>Phone: 9668555555</h5>
-        <h5>Email: balaji@gmail.com</h5>
-        <h5>Register No: 646656544</h5>
+        <h3>Shyam Agency</h3>
+        <h4 style="margin: 0">Sale Bill</h4>
 
         <hr class="line-dot">
 
-        <h5>Party : {{ $order->supplier->name }}</h5>
-        <h5>Order ID: {{ $order->order_id }}</h5>
-        <h5>{{ $order->created_at->format('d/M/Y h:i') }}</h5>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 20px; margin-bottom: 20px;">
+            <div style="flex: 1; min-width: 20px;text-align: left;">
+                <h5 style="margin: 4px 0;">Party: {{ $order->supplier->name }}</h5>
+                <h5 style="margin: 4px 0;">Phone: {{ $order->supplier->phone_number }}</h5>
+                <h5 style="margin: 4px 0;">Address: {{ $order->supplier->address }}</h5>
+            </div>
+            <div style="text-align: left; flex: 1; min-width: 20px;">
+                <h5 style="margin: 4px 0;">Order ID: {{ $order->bill_id }}</h5>
+                <h5 style="margin: 4px 0;">Date: {{ $order->date->format('d/M/Y h:i') }}</h5>
+            </div>
+        </div>
+
         <hr class="line-dot">
 
         <table>
             <thead>
-                <tr>
+                {{-- <tr>
                     <th>SL</th>
                     <th>DESC</th>
                     <th>Box</th>
                     <th>Patti</th>
                     <th>Packet</th>
                     <th>Amount</th>
+                </tr> --}}
+                <tr>
+                    <th>SL</th>
+                    <th>DESC</th>
+                    <th>Qty</th>
+                    <th>Rate</th>
+                    <th>Amount</th>
                 </tr>
             </thead>
             <tbody>
+                @php $serial = 1; @endphp
                 @foreach ($order->orderProduct as $orderProduct)
-                    <tr>
+                      @if ($orderProduct->box > 0)
+                        @php
+                            $totalBoxQty = $orderProduct->box * $orderProduct->product->packet;
+                        @endphp
+                        <tr>
+                            <td>{{ $serial++ }}</td>
+                            <td>{{ $orderProduct->product->short_name }}</td>
+                            <td style="text-align: center">{{ $orderProduct->box }} box</td>
+                            <td style="text-align: center">{{ number_format($orderProduct->product->packet * $orderProduct->price, 2) }}</td>
+                            <td>₹{{ number_format($totalBoxQty * $orderProduct->price, 2) }}</td>
+                        </tr>
+                    @endif
+
+                    @if ($orderProduct->patti > 0)
+                        @php
+                            $totalPattiQty = $orderProduct->patti * $orderProduct->product->per_patti_piece;
+                        @endphp
+                        <tr>
+                            <td>{{ $serial++ }}</td>
+                            <td>{{ $orderProduct->product->short_name }}</td>
+                            <td style="text-align: center">{{ $orderProduct->patti }} pti</td>
+                            <td style="text-align: center">{{ number_format($orderProduct->product->per_patti_piece * $orderProduct->price, 2) }}</td>
+                            <td>₹{{ number_format($totalPattiQty * $orderProduct->price, 2) }}</td>
+                        </tr>
+                    @endif
+
+                    @if ($orderProduct->packet > 0)
+                        @php
+                            $totalPacketQty = $orderProduct->packet;
+                        @endphp
+                        <tr>
+                            <td>{{ $serial++ }}</td>
+                            <td>{{ $orderProduct->product->short_name }}</td>
+                            <td style="text-align: center">{{ $orderProduct->packet }} pkt</td>
+                            <td style="text-align: center">{{ number_format($orderProduct->price, 2) }}</td>
+                            <td>₹{{ number_format($totalPacketQty * $orderProduct->price, 2) }}</td>
+                        </tr>
+                    @endif
+
+                    {{-- <tr>
                         <td>{{ $loop->iteration }}</td>
                         <td>{{ $orderProduct->product->short_name }}</td>
                         <td style="text-align: center">{{ $orderProduct->box }}</td>
                         <td style="text-align: center">{{ $orderProduct->patti }}</td>
                         <td style="text-align: center">{{ $orderProduct->packet }}</td>
                         <td>₹{{ $orderProduct->total_cost }}</td>
-                    </tr>
+                    </tr> --}}
                     
                 @endforeach
-                <tr style="border-top: 1px dashed black;margin: 5px 0;">
-                    <td colspan="2" style="font-weight: bold">Total </td>
+                {{-- <tr style="border-top: 1px dashed black;">
+                    <td></td>
+                    <td style="text-align: center;font-weight: bold">Box</td>
+                    <td style="text-align: center;font-weight: bold">Patti</td>
+                    <td style="text-align: center;font-weight: bold">Pkt</td>
+                    <td></td>
+                </tr>
+                <tr >
+                    <td style="font-weight: bold">Total </td>
                     <td style="text-align: center;font-weight: bold">{{ $order->total_box }}</td>
                     <td style="text-align: center;font-weight: bold">{{ $order->total_patti }}</td>
                     <td style="text-align: center;font-weight: bold">{{ $order->total_packet }}</td>
                     <td style="text-align: center;font-weight: bold">₹{{ $order->final_amount }}</td>
+                </tr> --}}
+            </tbody>
+        </table>
+     <div class="summary-table" style="margin-top: 10px;">
+        <table style="width: 100%; border-collapse: collapse;">
+            <tbody>
+                <tr style="border-top: 1px dashed black;">
+                    <td></td>
+                    <td style="text-align: center; font-weight: bold">Box</td>
+                    <td style="text-align: center; font-weight: bold">Patti</td>
+                    <td style="text-align: center; font-weight: bold">Pkt</td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td style="font-weight: bold">Total</td>
+                    <td style="text-align: center; font-weight: bold">{{ $order->total_box }}</td>
+                    <td style="text-align: center; font-weight: bold">{{ $order->total_patti }}</td>
+                    <td style="text-align: center; font-weight: bold">{{ $order->total_packet }}</td>
+                    <td style="text-align: center; font-weight: bold">₹{{ $order->final_amount }}</td>
                 </tr>
             </tbody>
         </table>
+    </div>
+
         {{-- <hr class="line-dot">
         <p class="total">Total: ₹{{ $order->final_amount }}</p> --}}
         
-        @if ($returnOrder)    
+        {{-- @if ($returnOrder)    
             <hr class="line-dot">
             <p style="color: #312682">Order Return</p>
             <hr class="line-dot">
             <table>
                 <thead>
-                    <tr>
+                     <tr>
                         <th>SL</th>
                         <th>DESC</th>
-                        <th>Box</th>
-                        <th>Patti</th>
-                        <th>Packet</th>
+                        <th>Qty</th>
+                        <th>Unit</th>
                         <th>Amount</th>
                     </tr>
                 </thead>
                 <tbody>
+                    @php $serial = 1; @endphp
                     @foreach ($returnOrder->returnOrderProducts as $returnOrderProduct)
-                        <tr>
-                            <td>{{ $loop->iteration }}</td>
-                            <td>{{ $returnOrderProduct->product->short_name }}</td>
-                            <td style="text-align: center">{{ $returnOrderProduct->box }}</td>
-                            <td style="text-align: center">{{ $returnOrderProduct->patti }}</td>
-                            <td style="text-align: center">{{ $returnOrderProduct->packet }}</td>
-                            <td>₹{{ $returnOrderProduct->total_cost }}</td>
-                        </tr>
+                        @if ($returnOrderProduct->box > 0)
+                            @php
+                                $totalBoxQty = $returnOrderProduct->box * $returnOrderProduct->product->packet;
+                            @endphp
+                            
+                            <tr>
+                                <td>{{ $serial++ }}</td>
+                                <td>{{ $returnOrderProduct->product->short_name }}</td>
+                                <td style="text-align: center">{{ $returnOrderProduct->box }}</td>
+                                <td>Box</td>
+                                <td>₹{{ number_format($totalBoxQty * $returnOrderProduct->price, 2) }}</td>
+                            </tr>
+                        @endif
+                        @if ($returnOrderProduct->patti > 0)
+                            @php
+                                $totalPattiQty = $returnOrderProduct->patti * $returnOrderProduct->product->per_patti_piece;
+                            @endphp
+                            
+                            <tr>
+                                <td>{{ $serial++ }}</td>
+                                <td>{{ $returnOrderProduct->product->short_name }}</td>
+                                <td style="text-align: center">{{ $returnOrderProduct->patti }}</td>
+                                <td>Patti</td>
+                                <td>₹{{ number_format($totalPattiQty * $returnOrderProduct->price, 2) }}</td>
+                            </tr>
+                        @endif
+
+                        @if ($returnOrderProduct->packet > 0)
+                            @php
+                                $totalPacketQty = $returnOrderProduct->packet;
+                            @endphp
+                            
+                            <tr>
+                                <td>{{ $serial++ }}</td>
+                                <td>{{ $returnOrderProduct->product->short_name }}</td>
+                                <td style="text-align: center">{{ $returnOrderProduct->packet }}</td>
+                                <td>Pkt</td>
+                                <td>₹{{ number_format($totalPacketQty * $returnOrderProduct->price, 2) }}</td>
+                            </tr>
+                            
+                        @endif
                         
                     @endforeach
-                    <tr style="border-top: 1px dashed black;margin: 5px 0;">
-                        <td colspan="2" style="font-weight: bold">Total </td>
+                    <tr style="border-top: 1px dashed black;">
+                        <td></td>
+                        <td style="text-align: center;font-weight: bold">Box</td>
+                        <td style="font-weight: bold">Patti</td>
+                        <td style="font-weight: bold">Pkt</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: bold">Total </td>
                         <td style="text-align: center;font-weight: bold">{{ $returnOrder->total_box }}</td>
                         <td style="text-align: center;font-weight: bold">{{ $returnOrder->total_patti }}</td>
                         <td style="text-align: center;font-weight: bold">{{ $returnOrder->total_packet }}</td>
@@ -235,13 +356,13 @@
                 </table>
                 
             @endforeach
-        @endif
+        @endif --}}
         <hr class="line-dot">
 
         <p class="total">Total Amount: ₹{{ $order->final_amount }}</p>
-        <p class="total">Return Amount: ₹{{ $returnOrder->final_amount ?? 0}}</p>
+        {{-- <p class="total">Return Amount: ₹{{ $returnOrder->final_amount ?? 0}}</p> --}}
         <p class="total">Collection Amount: ₹{{ $collections->sum('amount') }}</p>
-        <p class="total">Expanses Amount: ₹{{ $expanses->sum('total_amount') }}</p>
+        {{-- <p class="total">Expanses Amount: ₹{{ $expanses->sum('total_amount') }}</p> --}}
         @php
             $pendingTotal = $order->final_amount - ($returnOrder->final_amount ?? 0) - $collections->sum('amount') - $expanses->sum('total_amount');
         @endphp

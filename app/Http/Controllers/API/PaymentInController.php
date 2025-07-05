@@ -70,6 +70,18 @@ class PaymentInController extends Controller
                     $biilTransaction->save();
 
                     $PaymentIn = new PaymentInBill();
+                    $prefix = 'PI-';
+                    $lastOrder = PaymentInBill::where('bill_ids', 'LIKE', "{$prefix}%")
+                        ->orderBy('id', 'desc')
+                        ->first();
+                    if ($lastOrder) {
+                        $lastNumber = (int) str_replace($prefix, '', $lastOrder->bill_id);
+                        $orderNumber = $lastNumber + 1;
+                    } else {
+                        $orderNumber = 1;
+                    }
+                    // Generate the bill_id
+                    $PaymentIn->bill_id = $prefix . $orderNumber;
                     $PaymentIn->transaction_id = $transaction->id;
                     $PaymentIn->bill_id = $bills['bill_id'];
                     $PaymentIn->bill_amount = $bills['bill_amount'];
@@ -77,6 +89,9 @@ class PaymentInController extends Controller
                     $PaymentIn->amount = $bills['amount'];
                     $PaymentIn->payment_type = $bills['amount'];
                     $PaymentIn->save();
+                    $transaction1 = Transaction::find($transaction->id);
+                    $transaction1->transaction_no = $PaymentIn->bill_id;
+                    $transaction1->save();
                 }
             }
 
@@ -121,7 +136,7 @@ class PaymentInController extends Controller
                 if ($request->payment_type == 'Cash') {
                     $paymentType->name = 'Cash';
 
-                    $bank = Banks::where('is_default', 1)->first();
+                    // $bank = Banks::where('is_default', 1)->first();
                     $bankTransactionCash = new BankTransaction();
                     $bankTransactionCash->withdraw_from = $transaction->id;
                     $bankTransactionCash->p_type = 'payment_in_cash';
@@ -129,8 +144,8 @@ class PaymentInController extends Controller
                     $bankTransactionCash->balance = $request->payment_amount;
                     $bankTransactionCash->date = $request->date ?? now();
                     $bankTransactionCash->save();
-                    $bank->total_amount = $bank->total_amount + $request->payment_amount;
-                    $bank->save();
+                    // $bank->total_amount = $bank->total_amount + $request->payment_amount;
+                    // $bank->save();
                 } elseif ($request->payment_type == 'Bank') {
                     $paymentType->name = 'Bank';
 
@@ -327,8 +342,8 @@ class PaymentInController extends Controller
                     $bankTransactionCash->balance = $request->payment_cash_amount;
                     $bankTransactionCash->date = $request->date ?? now();
                     $bankTransactionCash->save();
-                    $bank->total_amount = $bank->total_amount + $request->payment_cash_amount;
-                    $bank->save();
+                    // $bank->total_amount = $bank->total_amount + $request->payment_cash_amount;
+                    // $bank->save();
                 } elseif ($request->payment_type == 'Bank') {
                     $paymentType->name = 'Bank';
 

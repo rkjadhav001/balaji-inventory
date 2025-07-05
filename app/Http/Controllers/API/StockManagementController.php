@@ -39,6 +39,7 @@ class StockManagementController extends Controller
                 return [
                     'id' => $product->id,
                     'category' => $product->category->name,
+                    'stock_amount' => $product->available_stock * $product->selling_price,
                     'name' => $product->name,
                     'box' => $stockDetails['box'],
                     'patti' => $stockDetails['patti'],

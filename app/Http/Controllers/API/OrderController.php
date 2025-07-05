@@ -16,6 +16,10 @@ use App\Models\BillCollection;
 use App\Models\CollectionType;
 use App\Models\PaymentInBill;
 use App\Models\BankTransaction;
+use App\Models\Expense;
+use App\Models\PurchaseInvoice;
+use App\Models\PurchaseReturnInvoice;
+use App\Models\DuePayment;
 use App\Models\Banks;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
@@ -79,14 +83,20 @@ class OrderController extends Controller
                 }
             }
             $order = new Order();
-            $prefix = 'B';
-            $year = date('y');
-            $lastOrder = Order::where('order_id', 'LIKE', "{$prefix}{$year}-%")
+            $prefix = 'S-';
+            // Get the last created order that matches the prefix pattern
+            $lastOrder = Order::where('bill_id', 'LIKE', "{$prefix}%")
                 ->orderBy('id', 'desc')
                 ->first();
-            $orderNumber = $lastOrder ? ((int) explode('-', $lastOrder->order_id)[1] + 1) : 1;
+            if ($lastOrder) {
+                // Extract the numeric part after the prefix
+                $lastNumber = (int) str_replace($prefix, '', $lastOrder->bill_id);
+                $orderNumber = $lastNumber + 1;
+            } else {
+                $orderNumber = 1;
+            }
             // Generate the order_id
-            $order->bill_id = "{$prefix}{$year}-{$orderNumber}";
+            $order->bill_id = $prefix . $orderNumber;
             $order->order_id = $orderID;
             $order->supplier_id = $request->supplier_id;
             $order->total_box = $totalBox;
@@ -162,6 +172,7 @@ class OrderController extends Controller
                 $transaction->transaction_type = 'sale';
                 $transaction->bill_id = $order->id;
                 $transaction->is_bill = 1;
+                $transaction->transaction_no = $order->bill_id;
                 $transaction->save();
             } else {
                 $transaction = new Transaction();
@@ -172,6 +183,7 @@ class OrderController extends Controller
                 $transaction->bill_id = $order->id;
                 $transaction->is_bill = 1;
                 $transaction->transaction_type = 'sale';
+                $transaction->transaction_no = $order->bill_id;
                 $transaction->save();
             }
             // $getBillCollection = CollectionType::where('bill_id', $order->id)->get();
@@ -252,101 +264,145 @@ class OrderController extends Controller
         }   
     }
 
-   public function transactions(Request $request)
+    // public function transactions(Request $request)
+    // {
+    //     $data = $this->get_admin_by_token($request);
+    //     if ($data) {
+    //         $query = Transaction::query();
+
+    //         if ($request->party_id) {
+    //             $query->where('party_id', $request->party_id);
+    //         }
+
+    //         if ($request->filter_type == 'today' && $request->has('date')) {
+    //             $query->whereDate('date', Carbon::parse($request->date)->format('Y-m-d'));
+    //         } elseif ($request->filter_type == 'monthly' && $request->has('month')) {
+    //             $query->whereMonth('date', Carbon::parse($request->month)->format('m'))
+    //                 ->whereYear('date', Carbon::parse($request->month)->format('Y'));
+    //         } elseif ($request->filter_type == 'weekly') {
+    //             $date = $request->has('date') ? Carbon::parse($request->date) : Carbon::now();
+    //             $query->whereBetween('date', [
+    //                 $date->copy()->startOfWeek(),
+    //                 $date->copy()->endOfWeek()
+    //             ]);
+    //         } elseif ($request->filter_type == 'yearly' && $request->has('date')) {
+    //             $query->whereYear('date', Carbon::parse($request->date)->format('Y'));
+    //         } elseif ($request->filter_type == 'custom' && $request->has(['from_date', 'to_date'])) {
+    //             $query->whereBetween('date', [
+    //                 Carbon::parse($request->from_date)->startOfDay(),
+    //                 Carbon::parse($request->to_date)->endOfDay()
+    //             ]);
+    //         }
+
+    //         if ($request->transaction_type) {
+    //             if ($request->transaction_type == 'sale') {
+    //                 $query->where('transaction_type', 'sale');
+    //             } elseif ($request->transaction_type == 'creditnote') {
+    //                 $query->where('transaction_type', 'return');
+    //             } elseif ($request->transaction_type == 'purchase') {
+    //                 $query->where('transaction_type', 'purchase');
+    //             } elseif ($request->transaction_type == 'debitnote') {
+    //                 $query->where('transaction_type', 'purchase return');
+    //             } elseif ($request->transaction_type == 'saleCreditnote') {
+    //                 $query->where(function ($q) {
+    //                     $q->where('transaction_type', 'sale')
+    //                     ->orWhere('transaction_type', 'return');
+    //                 });
+    //             } elseif ($request->transaction_type == 'purchaseDebitnote') {
+    //                 $query->where(function ($q) {
+    //                     $q->where('transaction_type', 'purchase')
+    //                     ->orWhere('transaction_type', 'purchase return');
+    //                 });
+    //             }
+    //         }
+
+    //         $perPage = $request->get('per_page', 25);
+
+    //         $transactions = $query->with(['party', 'bill'])
+    //             ->orderByDesc('id')
+    //             ->paginate($perPage);
+
+    //         $transactions->getCollection()->transform(function ($transaction) {
+    //             if ($transaction->type === 'expense') {
+    //                 $transaction->bill = $transaction->expanseBill;
+    //             }
+    //             if ($transaction->transaction_type === 'sale') {
+                    
+    //             }
+    //             return $transaction;
+    //         });
+    //         $filteredQuery = clone $query;
+
+    //         $totalNetReceivable = 0;
+    //         $totalNetPayable = 0;
+    //         if ($request->party_id) {
+    //             $transactionsLists = Transaction::where('party_id', $request->party_id)->get();
+    //         } else {
+    //             $transactionsLists = Transaction::all();
+    //         }
+    //         $netReceivable = 0;
+    //         $netPayable = 0;
+    //         foreach ($transactionsLists as $key => $transactionsList) {
+    //             $party_id = $transactionsList->party_id;
+    //             $sale = Order::where('supplier_id', $party_id)->sum('final_amount');
+    //             $collection = BillCollection::where('party_id', $party_id)->sum('amount');
+    //             $returnBill = ReturnOrder::where('supplier_id', $party_id)->sum('final_amount');
+    //             $expanses = Expense::where('party_id', $party_id)->sum('total_amount');
+    //             $creditTransfer = TransferAmount::with('creditedParty', 'debitedParty')->where('to_transfer_id', $party_id)->where('type', 'bill')->sum('amount');
+    //             $debitTransfer = TransferAmount::where('from_transfer_id', $party_id)->where('type', 'bill')->sum('amount');
+    //             $purchaseInvoice = PurchaseInvoice::where('party_id', $party_id)->sum('total_payable_amount');
+    //             $purchaseInvoicePayment = PurchaseInvoice::where('party_id', $party_id)->sum('payment_amount');
+    //             $purchaseReturnInvoice = PurchaseReturnInvoice::where('party_id', $party_id)->sum('total_payable_amount');
+    //             $duePaymentCash = DuePayment::where('party_id', $party_id)->sum('cash_amount');
+    //             $duePaymentBank = DuePayment::where('party_id', $party_id)->sum('bank_amount');
+    //             $paymentIn = Transaction::where('party_id', $party_id)->where('transaction_type', 'payment_in')->sum('total_amount');
+    //             // $supplier->sale = $sale;
+    //             // $supplier->collection = $collection;
+    //             // // $supplier->pending = $sale - $collection - $returnBill - $expanses;
+    //             // $supplier->pending = $sale - $collection - $paymentIn - $returnBill - $expanses + $creditTransfer - $debitTransfer - $purchaseInvoice - $purchaseInvoicePayment + $purchaseReturnInvoice + $duePaymentCash + $duePaymentBank;
+    //             // $supplier->outstanding = 0.00;
+    //             // $supplier->return = $returnBill;
+    //             $netReceivable = $sale - $collection - $paymentIn - $returnBill - $expanses - $creditTransfer + $debitTransfer;
+    //             $netPayable = $purchaseInvoice - $purchaseInvoicePayment - $purchaseReturnInvoice - $duePaymentCash - $duePaymentBank;
+    //             $totalNetReceivable += $netReceivable;
+    //             $totalNetPayable += $netPayable;
+    //         }
+
+    //         // $totalBalance = $totalSale - $totalTakePayments - $totalReturn - $totalExpenses - $totalPurchase + $totalPurchaseReturn;
+    //         $transactionsList = [
+    //             // 'total_amount' => $totalBalance,
+    //             // 'net_receivable' => $totalPendingSale - $totalExpenses,
+    //             // 'net_payable' => $totalPurchase - $totalPurchaseReturn - $duePayment,
+    //             'total_amount' => 0,
+    //             'net_receivable' => $totalNetReceivable,
+    //             'net_payable' => $totalNetPayable,
+    //             'current_page' => $transactions->currentPage(),
+    //             'last_page' => $transactions->lastPage(),
+    //             'per_page' => $transactions->perPage(),
+    //             'total' => $transactions->total(),
+    //             'data' => $transactions->items(),
+    //         ];
+
+    //         return response()->json([
+    //             'success' => 'true',
+    //             'data' => $transactionsList,
+    //             'message' => 'Transaction List Fetch successfully'
+    //         ], 200);
+    //     } else {
+    //         return response()->json([
+    //             'success' => 'false',
+    //             'data' => [
+    //                 ['code' => 'auth-001', 'message' => 'Unauthorized.']
+    //             ]
+    //         ], 200);
+    //     }
+    // }
+
+    public function transactions(Request $request) 
     {
         $data = $this->get_admin_by_token($request);
-        if ($data) {
-            $query = Transaction::query();
 
-            if ($request->party_id) {
-                $query->where('party_id', $request->party_id);
-            }
-
-            if ($request->filter_type == 'today' && $request->has('date')) {
-                $query->whereDate('date', Carbon::parse($request->date)->format('Y-m-d'));
-            } elseif ($request->filter_type == 'monthly' && $request->has('month')) {
-                $query->whereMonth('date', Carbon::parse($request->month)->format('m'))
-                    ->whereYear('date', Carbon::parse($request->month)->format('Y'));
-            } elseif ($request->filter_type == 'weekly') {
-                $date = $request->has('date') ? Carbon::parse($request->date) : Carbon::now();
-                $query->whereBetween('date', [
-                    $date->copy()->startOfWeek(),
-                    $date->copy()->endOfWeek()
-                ]);
-            } elseif ($request->filter_type == 'yearly' && $request->has('date')) {
-                $query->whereYear('date', Carbon::parse($request->date)->format('Y'));
-            } elseif ($request->filter_type == 'custom' && $request->has(['from_date', 'to_date'])) {
-                $query->whereBetween('date', [
-                    Carbon::parse($request->from_date)->startOfDay(),
-                    Carbon::parse($request->to_date)->endOfDay()
-                ]);
-            }
-
-            if ($request->transaction_type) {
-                if ($request->transaction_type == 'sale') {
-                    $query->where('transaction_type', 'sale');
-                } elseif ($request->transaction_type == 'creditnote') {
-                    $query->where('transaction_type', 'return');
-                } elseif ($request->transaction_type == 'purchase') {
-                    $query->where('transaction_type', 'purchase');
-                } elseif ($request->transaction_type == 'debitnote') {
-                    $query->where('transaction_type', 'purchase return');
-                } elseif ($request->transaction_type == 'saleCreditnote') {
-                    $query->where(function ($q) {
-                        $q->where('transaction_type', 'sale')
-                        ->orWhere('transaction_type', 'return');
-                    });
-                } elseif ($request->transaction_type == 'purchaseDebitnote') {
-                    $query->where(function ($q) {
-                        $q->where('transaction_type', 'purchase')
-                        ->orWhere('transaction_type', 'purchase return');
-                    });
-                }
-            }
-
-            $perPage = $request->get('per_page', 25);
-
-            $transactions = $query->with(['party', 'bill'])
-                ->orderByDesc('id')
-                ->paginate($perPage);
-
-            $transactions->getCollection()->transform(function ($transaction) {
-                if ($transaction->type === 'expense') {
-                    $transaction->bill = $transaction->expanseBill;
-                }
-                if ($transaction->transaction_type === 'sale') {
-                    
-                }
-                return $transaction;
-            });
-              $filteredQuery = clone $query;
-
-            $totalSale = (clone $filteredQuery)->where('transaction_type', 'sale')->sum('total_amount');
-            $totalPendingSale = (clone $filteredQuery)->where('transaction_type', 'sale')->sum('pending_amount');
-            $totalReturn = (clone $filteredQuery)->where('transaction_type', 'return')->sum('pending_amount');
-            $totalPurchase = (clone $filteredQuery)->where('transaction_type', 'purchase')->sum('total_amount');
-            $totalPurchaseReturn = (clone $filteredQuery)->where('transaction_type', 'purchase return')->sum('total_amount');
-            $totalExpenses = (clone $filteredQuery)->where('transaction_type', 'expense')->sum('total_amount');
-            $totalTakePayments = (clone $filteredQuery)->where('transaction_type', 'payment_in')->sum('total_amount');
-
-            $totalBalance = $totalSale - $totalTakePayments - $totalReturn - $totalExpenses - $totalPurchase + $totalPurchaseReturn;
-            $transactionsList = [
-                'total_amount' => $totalBalance,
-                'net_receivable' => $totalSale - $totalReturn - $totalExpenses,
-                'net_payable' => $totalPurchase - $totalPurchaseReturn,
-                'current_page' => $transactions->currentPage(),
-                'last_page' => $transactions->lastPage(),
-                'per_page' => $transactions->perPage(),
-                'total' => $transactions->total(),
-                'data' => $transactions->items(),
-            ];
-
-            return response()->json([
-                'success' => 'true',
-                'data' => $transactionsList,
-                'message' => 'Transaction List Fetch successfully'
-            ], 200);
-        } else {
+        if (!$data) {
             return response()->json([
                 'success' => 'false',
                 'data' => [
@@ -354,7 +410,154 @@ class OrderController extends Controller
                 ]
             ], 200);
         }
+
+        $query = Transaction::query();
+
+        if ($request->party_id) {
+            $query->where('party_id', $request->party_id);
+        }
+
+        if ($request->filter_type == 'today' && $request->has('date')) {
+            $query->whereDate('date', Carbon::parse($request->date)->format('Y-m-d'));
+        } elseif ($request->filter_type == 'monthly' && $request->has('month')) {
+            $query->whereMonth('date', Carbon::parse($request->month)->format('m'))
+                ->whereYear('date', Carbon::parse($request->month)->format('Y'));
+        } elseif ($request->filter_type == 'weekly') {
+            $date = $request->has('date') ? Carbon::parse($request->date) : Carbon::now();
+            $query->whereBetween('date', [
+                $date->copy()->startOfWeek(),
+                $date->copy()->endOfWeek()
+            ]);
+        } elseif ($request->filter_type == 'yearly' && $request->has('date')) {
+            $query->whereYear('date', Carbon::parse($request->date)->format('Y'));
+        } elseif ($request->filter_type == 'custom' && $request->has(['from_date', 'to_date'])) {
+            $query->whereBetween('date', [
+                Carbon::parse($request->from_date)->startOfDay(),
+                Carbon::parse($request->to_date)->endOfDay()
+            ]);
+        }
+
+        if ($request->transaction_type) {
+            switch ($request->transaction_type) {
+                case 'sale':
+                    $query->where('transaction_type', 'sale');
+                    break;
+                case 'creditnote':
+                    $query->where('transaction_type', 'return');
+                    break;
+                case 'purchase':
+                    $query->where('transaction_type', 'purchase');
+                    break;
+                case 'debitnote':
+                    $query->where('transaction_type', 'purchase return');
+                    break;
+                case 'saleCreditnote':
+                    $query->where(function ($q) {
+                        $q->where('transaction_type', 'sale')
+                        ->orWhere('transaction_type', 'return');
+                    });
+                    break;
+                case 'purchaseDebitnote':
+                    $query->where(function ($q) {
+                        $q->where('transaction_type', 'purchase')
+                        ->orWhere('transaction_type', 'purchase return');
+                    });
+                    break;
+            }
+        }
+
+        $perPage = $request->get('per_page', 25);
+        $transactions = $query->with(['party', 'bill'])
+                            ->orderBy('date', 'desc')
+                            ->paginate($perPage);
+
+        $transactions->getCollection()->transform(function ($transaction) {
+            if ($transaction->type === 'expense') {
+                $transaction->bill = $transaction->expanseBill;
+            }
+            return $transaction;
+        });
+
+        // Net Receivable / Payable Calculation
+        $parties = $request->party_id 
+            ? [Transaction::where('party_id', $request->party_id)->first()?->party_id] 
+            : Transaction::distinct()->pluck('party_id');
+
+        $totalNetReceivable = 0;
+        $totalNetPayable = 0;
+
+        foreach ($parties as $party_id) {
+            if (!$party_id) continue;
+            $saleMinnusTransactions = Transaction::where('party_id', $party_id)
+            ->where('transaction_type', 'sale')
+            ->where('pending_amount', '<', 0)
+            ->sum('pending_amount');
+            $rawPending = round($saleMinnusTransactions, 2);               // -1602.60
+            $totalPendingAmount = round(abs($saleMinnusTransactions), 2);  // 1602.60
+
+            $sale = Order::where('supplier_id', $party_id)->sum('final_amount');
+            $collection = BillCollection::where('party_id', $party_id)->sum('amount');
+            $returnBill = ReturnOrder::where('supplier_id', $party_id)->sum('final_amount');
+            $expanses = Expense::where('party_id', $party_id)->sum('total_amount');
+
+            $creditTransfer = TransferAmount::where('to_transfer_id', $party_id)
+                                            ->where('type', 'bill')
+                                            ->sum('amount');
+            $debitTransfer = TransferAmount::where('from_transfer_id', $party_id)
+                                        ->where('type', 'bill')
+                                        ->sum('amount');
+
+            $purchaseInvoice = PurchaseInvoice::where('party_id', $party_id)->sum('total_payable_amount');
+            $purchaseInvoicePayment = PurchaseInvoice::where('party_id', $party_id)->sum('payment_amount');
+            $purchaseReturnInvoice = PurchaseReturnInvoice::where('party_id', $party_id)->sum('total_payable_amount');
+            $duePaymentCash = DuePayment::where('party_id', $party_id)->sum('cash_amount');
+            $duePaymentBank = DuePayment::where('party_id', $party_id)->sum('bank_amount');
+            $paymentIn = Transaction::where('party_id', $party_id)
+                                    ->where('transaction_type', 'payment_in')
+                                    ->sum('total_amount');
+
+            // Correct Calculations
+            $netReceivable = ($sale ?? 0) 
+                        - ($collection ?? 0) 
+                        - ($returnBill ?? 0) 
+                        - ($paymentIn ?? 0) 
+                        - ($debitTransfer ?? 0) 
+                        + ($creditTransfer ?? 0) 
+                        - ($expanses ?? 0)
+                        + ($totalPendingAmount ?? 0);
+
+            $netPayable = $purchaseInvoice 
+                        - $purchaseInvoicePayment 
+                        - $purchaseReturnInvoice 
+                        - $duePaymentCash 
+                        - $duePaymentBank
+                        + $totalPendingAmount;
+
+            $netReceivable = round($netReceivable, 2);
+            $totalNetReceivable += $netReceivable;
+            $netPayable = round($netPayable, 2);
+            $totalNetPayable += $netPayable;
+        }
+
+        // Response structure
+        $transactionsList = [
+            'total_amount' => 0, // You can calculate this if needed
+            'net_receivable' => $totalNetReceivable,
+            'net_payable' => $totalNetPayable,
+            'current_page' => $transactions->currentPage(),
+            'last_page' => $transactions->lastPage(),
+            'per_page' => $transactions->perPage(),
+            'total' => $transactions->total(),
+            'data' => $transactions->items(),
+        ];
+
+        return response()->json([
+            'success' => 'true',
+            'data' => $transactionsList,
+            'message' => 'Transaction List Fetch successfully'
+        ], 200);
     }
+
 
 
     public function updateOrder(Request $request,$id)
@@ -402,13 +605,29 @@ class OrderController extends Controller
 
             $order->save();
 
+            $submittedProductIds = [];
             foreach ($request->products as $product) {
                 if (($product['box'] ?? 0) > 0 || ($product['patti'] ?? 0) > 0 || ($product['packet'] ?? 0) > 0) {
                     $orderDetail = OrderDetial::where('product_id',$product['product_id'])->where('order_id',$order->id)->first();
+                    $submittedProductIds[] = $product['product_id'];
+                    // If not found, create new
+                    if (!$orderDetail) {
+                        $orderDetail = new OrderDetial();
+                        // $orderDetail->order_id = $order->id;
+                        // $orderDetail->product_id = $product['product_id'];
+                        $oldQty = 0;
+                    } else {
+                        // Adjust old stock back to product
+                        $oldQty = $orderDetail->total_qty;
+                        $findOldProduct = Product::find($product['product_id']);
+                        $findOldProduct->available_stock += $oldQty;
+                        $findOldProduct->save();
+                    }
+
                     // Ajectst old stock
-                    $findOldProduct = Product::find($product['product_id']);
-                    $findOldProduct->available_stock += $orderDetail->total_qty;
-                    $findOldProduct->save();
+                    // $findOldProduct = Product::find($product['product_id']);
+                    // $findOldProduct->available_stock += $orderDetail->total_qty;
+                    // $findOldProduct->save();
                     // Add new stock
                     $findProduct = Product::find($product['product_id']);
                     $orderDetail->order_id = $order->id;
@@ -424,6 +643,21 @@ class OrderController extends Controller
                     $findProduct->save();
                 }
             }
+
+            $existingDetails = OrderDetial::where('order_id', $order->id)->get();
+
+            foreach ($existingDetails as $detail) {
+                if (!in_array($detail->product_id, $submittedProductIds)) {
+                    $product = Product::find($detail->product_id);
+                    if ($product) {
+                        $product->available_stock += $detail->total_qty;
+                        $product->save();
+                    }
+
+                    $detail->delete();
+                }
+            }
+            
             if (count($request->collection_type) > 0)
             {
                 $checkBillCollection = BillCollection::where('bill_id', $order->id)->where('is_bill',1)->first();
@@ -466,9 +700,15 @@ class OrderController extends Controller
                     $collectionType->amount = $collection['amount'] ?? 0;
                     $collectionType->save();
                 }
+            } else {
+                $checkBillCollection = BillCollection::where('bill_id', $order->id)->where('is_bill',1)->first();
+                if ($checkBillCollection) {
+                    $deleteCollectionType = CollectionType::where('collection_id', $checkBillCollection->id)->delete();
+                    $checkBillCollection->delete();
+                }
             }
             
-            if (count($request->collection_type) > 0) {
+            // if (count($request->collection_type) > 0) {
                 // $findTransaction = Transaction::where('bill_id', $order->id)->where('is_bill',1)->first();
                 $findTransaction = Transaction::where('bill_id', $order->id)->where('is_bill',1)->where('transaction_type', 'sale')->first();
 
@@ -497,47 +737,15 @@ class OrderController extends Controller
                 } else {
                     $Transaction->type = 'sale partial';
                 }
+                if ($Transaction->pending_amount === $Transaction->total_amount) {
+                    $Transaction->type = 'sale unpaid';
+                }
                 // $Transaction->bill_id = $order->id;
                 $Transaction->transaction_type = 'sale';
                 $Transaction->save();
-            }
-
-            // $getBillCollection = CollectionType::where('bill_id', $order->id)->get();
-            // if (count($getBillCollection) > 0) {
-            //     $getBillCollectionGpay = CollectionType::where('bill_id', $order->id)->where('name', 'G-pay')->sum('amount');
-            //     $getBillCollectionCash = CollectionType::where('bill_id', $order->id)->where('name', 'Cash')->sum('amount');
-            //     if ($getBillCollectionGpay > 0) {
-
-            //         $bank = Banks::where('is_default', 1)->first();
-            //         $bankTransaction = BankTransaction::where('deposit_to', $order->id)->where('p_type', 'sale_bill')->first();
-            //         if (!$bankTransaction) {
-            //             $bankTransaction = new BankTransaction();
-            //         }
-            //         $bankTransaction->withdraw_from = $order->id;
-            //         $bankTransaction->p_type = 'sale_bill';
-            //         $bankTransaction->deposit_to = $bank->id;
-            //         $bankTransaction->balance = $getBillCollectionGpay;
-            //         $bankTransaction->date = $request->date ?? now();
-            //         $bankTransaction->save();
-
-            //         $bank->total_amount += $getBillCollectionGpay;
-            //         $bank->save();
-            //     }
-            //     if ($getBillCollectionCash > 0) {
-
-            //         $bankTransaction = BankTransaction::where('withdraw_from', $order->id)->where('p_type', 'sale_cash')->first();
-            //         if (!$bankTransaction) {
-            //             $bankTransaction = new BankTransaction();
-            //         }
-            //         $bankTransaction->withdraw_from = $order->id;
-            //         $bankTransaction->p_type = 'sale_cash';
-            //         $bankTransaction->deposit_to = "Cash";
-            //         $bankTransaction->balance = $getBillCollectionCash;
-            //         $bankTransaction->date = $request->date ?? now();
-            //         $bankTransaction->save();
-            //     }
             // }
 
+ 
             $getBillCollection = CollectionType::where('bill_id', $order->id)->get();
             if ($getBillCollection->count() > 0) {
                 $groupedByDate = $getBillCollection->groupBy(function ($item) {
@@ -581,6 +789,19 @@ class OrderController extends Controller
                         $bankTransaction->save();
                     }
                 }
+            } else {
+                $bankTransaction = BankTransaction::where('withdraw_from', $order->id)
+                            ->where('p_type', 'sale_bill')
+                            ->first();
+                if ($bankTransaction) {
+                    $bank = Banks::where('is_default', 1)->first();
+                    $bank->total_amount -= $bankTransaction->balance;
+                    $bank->save();
+                    $bankTransaction->delete();
+                }
+                $cashTransaction = BankTransaction::where('withdraw_from', $order->id)
+                            ->where('p_type', 'sale_cash')
+                            ->delete();
             }
 
             return response()->json(['success' => 'true', 'data' => $order, 'message' => 'Order updated successfully'], 200);
@@ -599,13 +820,13 @@ class OrderController extends Controller
         $data = $this->get_admin_by_token($request);
         if ($data) {
             $returnOrder = ReturnOrder::where('id', $id)->first();
-            $order = Order::with([
+            $order = ReturnOrder::with([
                 'supplier',
-                'orderProduct.product' => function ($query) {
+                'returnOrderProducts.product' => function ($query) {
                     $query->select('*'); 
                 }
-            ])->where('order_type', 'retailer')->where('id', $returnOrder->order_id)->first();
-            foreach ($order->orderProduct as $key => $orderProduct) {
+            ])->where('order_type', 'retailer')->where('id', $returnOrder->id)->first();
+            foreach ($order->returnOrderProducts as $key => $orderProduct) {
                 $returnProduct = ReturnOrderDetail::where('return_order_id', $id)->where('product_id', $orderProduct->product_id)->first();
                 if ($returnProduct) {
                     $orderProduct->added_qty = [
@@ -867,5 +1088,21 @@ class OrderController extends Controller
                 'data' => $errors
             ], 200);
         }
+    }
+
+    public function partyBillList(Request $request)
+    {
+        $data = $this->get_admin_by_token($request);
+        if ($data) {
+            $bills = Order::with('supplier')->where('supplier_id', $request->party_id)->orderByDesc('id')->get();
+            return response()->json(['success' => 'true', 'data' => $bills, 'message' => 'Order List Fetch successfully'], 200);
+        } else {
+            $errors = [];
+            array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
+            return response()->json([
+                'success' => 'false',
+                'data' => $errors
+            ], 200);
+        } 
     }
 }

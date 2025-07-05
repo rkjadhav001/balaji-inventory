@@ -23,6 +23,7 @@ use App\Http\Controllers\API\BanksController;
 use App\Http\Controllers\API\UnitTypeController;
 use App\Http\Controllers\API\VehicleController;
 use App\Http\Controllers\API\WholesalerController;
+use App\Http\Controllers\API\ReportController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -168,6 +169,7 @@ Route::group(['namespace' => 'Api', 'prefix' => 'order'], function () {
     Route::get('list',[OrderController::class, 'index']);
     Route::post('create',[OrderController::class, 'create']);
     Route::post('update/{id}',[OrderController::class, 'updateOrder']);
+    Route::get('party-bills',[OrderController::class, 'partyBillList']);
 });
     
 #Wholesaler
@@ -178,6 +180,7 @@ Route::group(['namespace' => 'Api', 'prefix' => 'wholesaler'], function () {
     Route::post('status',[WholesalerController::class, 'status']);
     Route::get('order-list',[WholesalerController::class, 'order']);
     Route::post('cancle_order',[WholesalerController::class, 'cancleOrder']);
+    Route::post('pending-order',[WholesalerController::class, 'pendingToOrder']);
     Route::post('order_update',[WholesalerController::class, 'orderUpdate']);        
     Route::get('order-status',[WholesalerController::class, 'statusUpdate']);
     Route::get('product-list',[WholesalerController::class, 'products']);
@@ -245,12 +248,16 @@ Route::group(['namespace' => 'Api', 'prefix' => 'payment-in'], function () {
 Route::group(['namespace' => 'Api', 'prefix' => 'expanse-category'], function () {
     Route::post('store',[ExpanseCategoryController::class, 'addCategory']);
     Route::get('list',[ExpanseCategoryController::class, 'listCategory']);
+    Route::post('update/{id}',[ExpanseCategoryController::class, 'updateCategory']);
+    Route::get('delete/{id}',[ExpanseCategoryController::class, 'deleteCategory']);
 });
 
 #Expanse Item
 Route::group(['namespace' => 'Api', 'prefix' => 'expanse-item'], function () {
     Route::post('store',[ExpanseItemController::class, 'addItem']);
     Route::get('list',[ExpanseItemController::class, 'listItem']);
+    Route::post('update/{id}',[ExpanseItemController::class, 'updateItem']);
+    Route::get('delete/{id}',[ExpanseItemController::class, 'deleteItem']);
 });
 
 #Payment Type
@@ -287,4 +294,10 @@ Route::group(['namespace' => 'Api', 'prefix' => 'due-payment'], function () {
 Route::group(['namespace' => 'Api', 'prefix' => 'app-config'], function () {
     Route::get('get',[AppConfigController::class, 'getAppConfig']);
     Route::post('update',[AppConfigController::class, 'updateAppConfig']);
+});
+
+#Report
+Route::group(['namespace' => 'Api', 'prefix' => 'report'], function () {
+    Route::get('party-item-wise',[ReportController::class, 'saleLedgerPartyItemWise']);
+    Route::get('item-detail',[ReportController::class, 'salePurchaseItemDetail']);
 });

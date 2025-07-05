@@ -13,4 +13,9 @@ class PurchaseReturnInvoice extends Model
     {
         return $this->belongsTo(Supplier::class,'party_id', 'id');
     }
+
+    public function purchaseReturnDetails()
+    {
+        return $this->hasMany(PurchaseReturnProduct::class, 'purchase_return_invoice_id', 'id');
+    }
 }

@@ -290,9 +290,9 @@ class WholeSelerController extends Controller
         $order = Order::with([
             'supplier',
             'orderProduct.product' => function ($query) {
-                $query->select('id', 'name', 'short_name'); 
+                $query->select('id', 'name', 'short_name', 'packet', 'patti', 'per_patti_piece'); 
             }
-        ])->where('order_type', 'retailer')->where('id', $id)->first();
+        ])->where('id', $id)->first();
         foreach ($order->orderProduct as $key => $product) {
             $returnOrder = ReturnOrderDetail::where('order_id', $id)->where('product_id', $product->product_id)->first();
             $order->orderProduct[$key]->return_order = $returnOrder;
@@ -304,7 +304,7 @@ class WholeSelerController extends Controller
         $returnOrder = ReturnOrder::with([
             'supplier',
             'returnOrderProducts.product' => function ($query) {
-                $query->select('id', 'name', 'short_name'); 
+                $query->select('id', 'name', 'short_name', 'packet', 'patti', 'per_patti_piece'); 
             }
         ])->where('order_id', $id)->first();
         $expanses = Expense::where('bill_id', $id)->get();

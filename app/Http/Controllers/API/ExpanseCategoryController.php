@@ -5,6 +5,7 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Models\CollectionType;
 use App\Models\ExpanseCategory;
+use App\Models\Expense;
 use App\Models\Order;
 use App\Models\PaymentType;
 use App\Models\User;
@@ -54,10 +55,62 @@ class ExpanseCategoryController extends Controller
         }
     }
 
+    public function updateCategory(Request $request){
+        $data = $this->get_admin_by_token($request);
+        if ($data) {
+            $category = ExpanseCategory::find($request->id);
+            if (!$category) {
+                return response()->json(['success' => 'false','message' => 'Category not found'], 200);
+            }
+            $checkDuplicate = ExpanseCategory::where('name', $request->name)->where('id','<>',$category->id)->first();
+            if ($checkDuplicate) {
+                return response()->json(['success' => 'false','message' => 'Category already exists'], 200);
+            }
+            $checkTransaction = Expense::where('name', $category->name)->first();
+            if ($checkTransaction) {
+                return response()->json(['success' => 'false','message' => 'Category already exists in transaction you can not change name'], 200);
+            }
+            $category->name = $request->name;
+            // $category->type = $request->type;
+            $category->save();
+            return response()->json(['success' => 'true','data' => $category,'message' => 'Category updated successfully'], 200);
+        } else {
+            $errors = [];
+            array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
+            return response()->json([
+                'success' => 'false',
+                'data' => $errors
+            ], 200);
+        }
+    }
+
+    public function deleteCategory(Request $request){
+        $data = $this->get_admin_by_token($request);
+        if ($data) {
+            $category = ExpanseCategory::find($request->id);
+            if (!$category) {
+                return response()->json(['success' => 'false','message' => 'Category not found'], 200);
+            }
+            $checkDuplicate = Expense::where('name', $category->name)->first();
+            if ($checkDuplicate) {
+                return response()->json(['success' => 'false','message' => 'Category already exists in transaction you can not delete it'], 200);
+            }
+            $category->delete();
+            return response()->json(['success' => 'true','data' => $category,'message' => 'Category deleted successfully'], 200);
+        } else {
+            $errors = [];
+            array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
+            return response()->json([
+                'success' => 'false',
+                'data' => $errors
+            ], 200);
+        }
+    }
+
     public function listCategory(Request $request){
         $data = $this->get_admin_by_token($request);
         if ($data) {
-            $categories = ExpanseCategory::where('type', $request->type)->where('name', 'like', '%' . $request->search . '%')->get();
+            $categories = ExpanseCategory::where('name', 'like', '%' . $request->search . '%')->get();
             return response()->json(['success' => 'true','data' => $categories,'message' => 'Categories list'], 200);
         } else {
             $errors = [];

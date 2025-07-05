@@ -10,12 +10,21 @@ class Product extends Model
 {
     use HasFactory;
 
-    protected $appends = ['unit_type_names'];
+    protected $appends = ['unit_type_names', 'wholesaler_unit_type_names'];
     protected $fillable = ['sorting'];
 
     public function getUnitTypeNamesAttribute()
     {
         $unitTypeIds = explode(',', $this->unit_types);
+        return DB::table('unit_types')
+        ->whereIn('id', $unitTypeIds)
+        ->select('id','name')
+        ->get();
+    }
+
+    public function getWholesalerUnitTypeNamesAttribute()
+    {
+        $unitTypeIds = explode(',', $this->wholesaler_unit_types);
         return DB::table('unit_types')
         ->whereIn('id', $unitTypeIds)
         ->select('id','name')

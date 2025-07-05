@@ -242,11 +242,11 @@
                                         value="{{ $product->id }}">
                                     <div class="row">
                                         @php
-                                            $unitTypesArray = explode(',', $product->unit_types);
+                                            $unitTypesArray = explode(',', $product->wholesaler_unit_types);
 
                                         @endphp
                                         @if (in_array('1', $unitTypesArray))
-                                            <div class="col-{{ 12 / count($product->unit_type_names) }}">
+                                            <div class="col-{{ 12 / count($product->wholesaler_unit_type_names) }}">
                                                 <label for="box">Box</label>
                                                 <div class="input-group">
                                                    
@@ -261,7 +261,7 @@
                                             </div>
                                         @endif
                                         @if (in_array('2', $unitTypesArray))
-                                            <div class="col-{{ 12 / count($product->unit_type_names) }}">
+                                            <div class="col-{{ 12 / count($product->wholesaler_unit_type_names) }}">
                                                 <label for="patti">Patti</label>
                                                 
                                                     <div class="input-group">
@@ -274,7 +274,7 @@
                                             </div>
                                         @endif
                                         @if (in_array('3', $unitTypesArray))
-                                            <div class="col-{{ 12 / count($product->unit_type_names) }}">
+                                            <div class="col-{{ 12 / count($product->wholesaler_unit_type_names) }}">
                                                 <label for="packet">Packet</label>
                                                
                                                     <div class="input-group">
@@ -333,262 +333,427 @@
     </script> --}}
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
     <script>
-
-$(document).ready(function () {
-    $("#add-product").click(function () {
-        let cartCount = $(".card").length; // Count cart items
-
-        if (cartCount === 0) {
-            alert("Your cart is empty! Please add items before submitting the order.");
-            return;  
-        }
-
-         
-        const totalProducts = $('#totalProducts').text();
-        const finalTotalAmount = $('#finalTotalAmount').text();
-
-        
-        const confirmation = confirm(
-            `You are about to place an order with ${totalProducts} products for a total of INR ${finalTotalAmount}. Do you want to proceed?`
-        );
-
-        if (confirmation) {
-            $("#orderForm").submit(); // Submit the form
-        }
-    });
-});
-
-
-
-function addProduct(productId, qty, cost, box, patti, packet) {
-    console.log("Adding product:", productId);
-
-    // Increase total values
-    updateCartTotals(qty, cost, box, patti, packet);
-    updateCartCount();
-}
-
-// Function to remove product and decrease values
-function removeProduct(productId) {
-    console.log("Removing product:", productId);
-
-    $.ajax({
-        url: "{{ route('Wholesaler.Cart.Remove') }}",
-        type: "POST",
-        data: {
-            _token: "{{ csrf_token() }}",
-            product_id: productId
-        },
-        success: function(response) { 
-            console.log("Product removed successfully", response); 
-
-            let productCard = $("input[name='products[" + productId + "][product_id]']").closest(".card");
-            let qtyToRemove = parseInt(productCard.find(".productTotalQty").text()) || 0;
-            let costToRemove = parseFloat(productCard.find(".productTotalCost").text().replace("₹", "")) || 0;
-            
-
-            let boxToRemove = parseInt(productCard.find(".productBox").val()) || 0;
-            let pattiToRemove = parseInt(productCard.find(".productPatti").val()) || 0;
-            let packetToRemove = parseInt(productCard.find(".productPacket").val()) || 0;
-
-            productCard.fadeOut(300, function () {
-                $(this).remove();
-                updateCartTotals(-qtyToRemove, -costToRemove, -boxToRemove, -pattiToRemove, -packetToRemove);
-                updateCartCount();
-            });
-        },
-        error: function(error) {
-            console.error("Error removing product", error);
-        }
-    });
-}
-
-// Function to update cart count dynamically
-function updateCartCount() {
-    let cartCount = $(".card").length;
-    if (cartCount > 0) {
-        $(".cart-count").text(cartCount);
-    } else {
-        $(".cart-count").remove(); // Hide count if cart is empty
+    function updateCartQuantities(productId, box, patti, packet, totalQty) {
+        $.ajax({
+            url: "{{ route('update.cart') }}",
+            type: "POST",
+            data: {
+                _token: "{{ csrf_token() }}",
+                product_id: productId,
+                box: box,
+                patti: patti,
+                packet: packet,
+                total_qty: totalQty
+            },
+            success: function(response) {
+                console.log("Cart quantities updated", response);
+            },
+            error: function(error) {
+                console.error("Error updating cart quantities", error);
+            }
+        });
     }
-}
 
-// Function to update total quantities & cost
-function updateCartTotals(qtyChange, costChange, boxChange, pattiChange, packetChange) {
-    let totalProducts = $(".card").length;
-    
-    // Ensure the extracted values are valid numbers
-    let totalQty = parseInt($("#totalProducts").text()) || 0;
-    let totalCost = parseFloat($("#finalTotalAmount").text().replace(/[^0-9.]/g, "")) || 0;
-    let totalBoxCount = parseInt($("#totalBoxCount").text()) || 0;
-    let totalPattiCount = parseInt($("#totalPattiCount").text()) || 0;
-    let totalPacketCount = parseInt($("#totalPacketCount").text()) || 0;
+    $(document).ready(function () {
+        $("#add-product").click(function () {
+            let cartCount = $(".card").length; // Count cart items
 
-    // Apply changes
-    totalQty += qtyChange;
-    totalCost += costChange;
-    totalBoxCount += boxChange;
-    totalPattiCount += pattiChange;
-    totalPacketCount += packetChange;
+            if (cartCount === 0) {
+                alert("Your cart is empty! Please add items before submitting the order.");
+                return;  
+            }
 
-    // Ensure values do not go negative
-    totalQty = Math.max(0, totalQty);
-    totalCost = Math.max(0, totalCost);
-    totalBoxCount = Math.max(0, totalBoxCount);
-    totalPattiCount = Math.max(0, totalPattiCount);
-    totalPacketCount = Math.max(0, totalPacketCount);
+             
+            const totalProducts = $('#totalProducts').text();
+            const finalTotalAmount = $('#finalTotalAmount').text();
 
-    // Update the DOM
-    $("#totalProducts").text(totalProducts);
-    $("#totalProductsHidden").val(totalProducts);
+            
+            const confirmation = confirm(
+                `You are about to place an order with ${totalProducts} products for a total of INR ${finalTotalAmount}. Do you want to proceed?`
+            );
 
-    $("#finalTotalAmount").text(`₹${totalCost.toFixed(2)} /INR`);
-    $("#totalAmountHidden").val(totalCost.toFixed(2));
-
-    $("#totalBoxCount").text(totalBoxCount);
-    $("#totalPattiCount").text(totalPattiCount);
-    $("#totalPacketCount").text(totalPacketCount);
-
-    // Save cart state
-    saveCartToSession(totalProducts, totalCost, totalBoxCount, totalPattiCount, totalPacketCount);
-}
-
-
- 
-function saveCartToSession(totalProducts, totalCost, totalBoxCount, totalPattiCount, totalPacketCount) {
-    
-    $.ajax({
-        url: "{{ route('Wholesaler.Cart.UpdateSession') }}",
-        type: "POST",
-        data: {
-            _token: "{{ csrf_token() }}",
-            totalProducts: totalProducts,
-            totalCost: totalCost,
-            totalBoxCount: totalBoxCount,
-            totalPattiCount: totalPattiCount,
-            totalPacketCount: totalPacketCount
-        },
-        success: function(response) {
-            console.log("Cart session updated", response);
-        },
-        error: function(error) {
-            console.error("Error updating cart session", error);
-        }
+            if (confirmation) {
+                $("#orderForm").submit(); // Submit the form
+            }
+        });
     });
-}
- 
-$(document).ready(function() {
-      const updateFinalTotals = () => {
-        let finalTotalAmount = 0;
-        let totalProducts = 0;
-        let totalBoxCount = 0;
-        let totalPattiCount = 0;
-        let totalPacketCount = 0;
+
+
+
+    function addProduct(productId, qty, cost, box, patti, packet) {
+        console.log("Adding product:", productId);
+
+        // Increase total values
+        updateCartTotals(qty, cost, box, patti, packet);
+        updateCartCount();
+    }
+
+    // Function to remove product and decrease values
+    function removeProduct(productId) {
+        console.log("Removing product:", productId);
+
+        $.ajax({
+            url: "{{ route('Wholesaler.Cart.Remove') }}",
+            type: "POST",
+            data: {
+                _token: "{{ csrf_token() }}",
+                product_id: productId
+            },
+            success: function(response) { 
+                console.log("Product removed successfully", response); 
+
+                let productCard = $("input[name='products[" + productId + "][product_id]']").closest(".card");
+                let qtyToRemove = parseInt(productCard.find(".productTotalQty").text()) || 0;
+                let costToRemove = parseFloat(productCard.find(".productTotalCost").text().replace("₹", "")) || 0;
+                
+
+                let boxToRemove = parseInt(productCard.find(".productBox").val()) || 0;
+                let pattiToRemove = parseInt(productCard.find(".productPatti").val()) || 0;
+                let packetToRemove = parseInt(productCard.find(".productPacket").val()) || 0;
+
+                productCard.fadeOut(300, function () {
+                    $(this).remove();
+                    updateCartTotals(-qtyToRemove, -costToRemove, -boxToRemove, -pattiToRemove, -packetToRemove);
+                    updateCartCount();
+                });
+            },
+            error: function(error) {
+                console.error("Error removing product", error);
+            }
+        });
+    }
+
+    // Function to update cart count dynamically
+    function updateCartCount() {
+        let cartCount = $(".card").length;
+        if (cartCount > 0) {
+            $(".cart-count").text(cartCount);
+        } else {
+            $(".cart-count").remove(); // Hide count if cart is empty
+        }
+    }
+
+    // Function to update total quantities & cost
+    function updateCartTotals(qtyChange, costChange, boxChange, pattiChange, packetChange) {
+        let totalProducts = $(".card").length;
         
-      
+        // Ensure the extracted values are valid numbers
+        let totalQty = parseInt($("#totalProducts").text()) || 0;
+        let totalCost = parseFloat($("#finalTotalAmount").text().replace(/[^0-9.]/g, "")) || 0;
+        let totalBoxCount = parseInt($("#totalBoxCount").text()) || 0;
+        let totalPattiCount = parseInt($("#totalPattiCount").text()) || 0;
+        let totalPacketCount = parseInt($("#totalPacketCount").text()) || 0;
+
+        // Apply changes
+        totalQty += qtyChange;
+        totalCost += costChange;
+        totalBoxCount += boxChange;
+        totalPattiCount += pattiChange;
+        totalPacketCount += packetChange;
+
+        // Ensure values do not go negative
+        totalQty = Math.max(0, totalQty);
+        totalCost = Math.max(0, totalCost);
+        totalBoxCount = Math.max(0, totalBoxCount);
+        totalPattiCount = Math.max(0, totalPattiCount);
+        totalPacketCount = Math.max(0, totalPacketCount);
+
+        // Update the DOM
+        $("#totalProducts").text(totalProducts);
+        $("#totalProductsHidden").val(totalProducts);
+
+        $("#finalTotalAmount").text(`₹${totalCost.toFixed(2)} /INR`);
+        $("#totalAmountHidden").val(totalCost.toFixed(2));
+
+        $("#totalBoxCount").text(totalBoxCount);
+        $("#totalPattiCount").text(totalPattiCount);
+        $("#totalPacketCount").text(totalPacketCount);
+
+        // Save cart state
+        saveCartToSession(totalProducts, totalCost, totalBoxCount, totalPattiCount, totalPacketCount);
+    }
+
+
+     
+    function saveCartToSession(totalProducts, totalCost, totalBoxCount, totalPattiCount, totalPacketCount) {
+        
+        $.ajax({
+            url: "{{ route('Wholesaler.Cart.UpdateSession') }}",
+            type: "POST",
+            data: {
+                _token: "{{ csrf_token() }}",
+                totalProducts: totalProducts,
+                totalCost: totalCost,
+                totalBoxCount: totalBoxCount,
+                totalPattiCount: totalPattiCount,
+                totalPacketCount: totalPacketCount
+            },
+            success: function(response) {
+                console.log("Cart session updated", response);
+            },
+            error: function(error) {
+                console.error("Error updating cart session", error);
+            }
+        });
+    }
+     
+    $(document).ready(function() {
+          const updateFinalTotals = () => {
+            let finalTotalAmount = 0;
+            let totalProducts = 0;
+            let totalBoxCount = 0;
+            let totalPattiCount = 0;
+            let totalPacketCount = 0;
+            
+          
+            $('.card').each(function() {
+                const card = $(this);
+                const totalCostElement = card.find('.productTotalCost');
+                const boxInput = card.find('.productBox');
+                const pattiInput = card.find('.productPatti');
+                const packetInput = card.find('.productPacket');
+
+                // Add up total costs
+                const totalCost = parseFloat(totalCostElement.text().replace(/[^0-9.]/g, '')) || 0;
+                finalTotalAmount += totalCost;
+
+                // Count products that have any input value greater than 0
+                const boxValue = parseFloat(boxInput.val()) || 0;
+                const pattiValue = parseFloat(pattiInput.val()) || 0;
+                const packetValue = parseFloat(packetInput.val()) || 0;
+
+                if (boxValue > 0 || pattiValue > 0 || packetValue > 0) {
+                    totalProducts++;
+                }
+
+                // Accumulate total counts for Box, Patti, and Packet
+                totalBoxCount += boxValue;
+                totalPattiCount += pattiValue;
+                totalPacketCount += packetValue;
+            });
+
+            
+            
+            $('#finalTotalAmount').html(`₹${finalTotalAmount.toFixed(2)} /INR`);
+            $('#totalAmountHidden').val(`${finalTotalAmount.toFixed(2)}`);
+            $('#totalProducts').html(`${totalProducts}`);
+            $('#totalProductsHidden').val(`${totalProducts}`);
+
+            // Display the total counts for Box, Patti, and Packet
+            $('#totalBoxCount').html(`${totalBoxCount}`);
+            $('#totalPattiCount').html(`${totalPattiCount}`);
+            $('#totalPacketCount').html(`${totalPacketCount}`);
+        }; 
         $('.card').each(function() {
             const card = $(this);
-            const totalCostElement = card.find('.productTotalCost');
+
+            // Extract product details from data attributes
+            const boxPacketCount = parseFloat(card.data('box')) || 0;
+            const boxPacket = parseFloat(card.data('packet')) || 0;
+            const pattiPacketCount = parseFloat(card.data('per_patti_paket')) || 0;
+            const pattiCount = parseFloat(card.data('patti')) || 0;
+            const sellingPrice = parseFloat(card.data('selling_price')) || 0;
+
+            // Inputs and display elements
             const boxInput = card.find('.productBox');
             const pattiInput = card.find('.productPatti');
             const packetInput = card.find('.productPacket');
+            const totalQtyElement = card.find('.productTotalQty');
+            const totalCostElement = card.find('.productTotalCost');
+            const productTotalQtyElement = card.find('.productTotalFormQty');
+            const productTotalCostElement = card.find('.productTotalFormCost');
 
-            // Add up total costs
-            const totalCost = parseFloat(totalCostElement.text().replace(/[^0-9.]/g, '')) || 0;
-            finalTotalAmount += totalCost;
+            // Calculate totals
+            const calculateTotals = () => {
+                let totalPacketsFromBox = 0;
+                let totalPacketsFromPatti = 0;
+                let totalDirectPackets = 0;
 
-            // Count products that have any input value greater than 0
-            const boxValue = parseFloat(boxInput.val()) || 0;
-            const pattiValue = parseFloat(pattiInput.val()) || 0;
-            const packetValue = parseFloat(packetInput.val()) || 0;
+                // Calculate packets from box
+                const boxValue = parseFloat(boxInput.val()) || 0;
+                totalPacketsFromBox = boxValue * boxPacket;
 
-            if (boxValue > 0 || pattiValue > 0 || packetValue > 0) {
-                totalProducts++;
-            }
+                // Calculate packets from patti
+                const pattiValue = parseFloat(pattiInput.val()) || 0;
+                totalPacketsFromPatti = pattiValue * pattiPacketCount;
 
-            // Accumulate total counts for Box, Patti, and Packet
-            totalBoxCount += boxValue;
-            totalPattiCount += pattiValue;
-            totalPacketCount += packetValue;
-        });
+                // Get directly entered packet value
+                const packetValue = parseFloat(packetInput.val()) || 0;
+                totalDirectPackets = packetValue;
 
-        
-        
-        $('#finalTotalAmount').html(`₹${finalTotalAmount.toFixed(2)} /INR`);
-        $('#totalAmountHidden').val(`${finalTotalAmount.toFixed(2)}`);
-        $('#totalProducts').html(`${totalProducts}`);
-        $('#totalProductsHidden').val(`${totalProducts}`);
+                // Total quantity and cost
+                const totalPackets = totalPacketsFromBox + totalPacketsFromPatti + totalDirectPackets;
+                const totalCost = totalPackets * sellingPrice;
 
-        // Display the total counts for Box, Patti, and Packet
-        $('#totalBoxCount').html(`${totalBoxCount}`);
-        $('#totalPattiCount').html(`${totalPattiCount}`);
-        $('#totalPacketCount').html(`${totalPacketCount}`);
-    }; 
-    $('.card').each(function() {
-        const card = $(this);
+                // Update the display
+                totalQtyElement.html(`${totalPackets} Pkt`);
+                productTotalQtyElement.val(`${totalPackets}`);
+                totalCostElement.html(`₹${totalCost.toFixed(2)} /INR`);
+                productTotalCostElement.val(`${totalCost.toFixed(2)}`);
 
-        // Extract product details from data attributes
-        const boxPacketCount = parseFloat(card.data('box')) || 0;
-        const boxPacket = parseFloat(card.data('packet')) || 0;
-        const pattiPacketCount = parseFloat(card.data('per_patti_paket')) || 0;
-        const pattiCount = parseFloat(card.data('patti')) || 0;
-        const sellingPrice = parseFloat(card.data('selling_price')) || 0;
+                // Update cart session
+                const productId = card.find('input[name^="products"][name$="[product_id]"]').val();
+                updateCartQuantities(productId, boxValue, pattiValue, packetValue, totalPackets);
 
-        // Inputs and display elements
-        const boxInput = card.find('.productBox');
-        const pattiInput = card.find('.productPatti');
-        const packetInput = card.find('.productPacket');
-        const totalQtyElement = card.find('.productTotalQty');
-        const totalCostElement = card.find('.productTotalCost');
-        const productTotalQtyElement = card.find('.productTotalFormQty');
-        const productTotalCostElement = card.find('.productTotalFormCost');
+                // Update final totals
+                updateFinalTotals();
+            };
 
-        // Calculate totals
-        const calculateTotals = () => {
-            let totalPacketsFromBox = 0;
-            let totalPacketsFromPatti = 0;
-            let totalDirectPackets = 0;
-
-            // Calculate packets from box
-            const boxValue = parseFloat(boxInput.val()) || 0;
-            totalPacketsFromBox = boxValue * boxPacket;
-
-            // Calculate packets from patti
-            const pattiValue = parseFloat(pattiInput.val()) || 0;
-            totalPacketsFromPatti = pattiValue * pattiPacketCount;
-
-            // Get directly entered packet value
-            const packetValue = parseFloat(packetInput.val()) || 0;
-            totalDirectPackets = packetValue;
-
-            // Total quantity and cost
-            const totalPackets = totalPacketsFromBox + totalPacketsFromPatti + totalDirectPackets;
-            const totalCost = totalPackets * sellingPrice;
-
-            // Update the display
-            totalQtyElement.html(`${totalPackets} Pkt`);
-            productTotalQtyElement.val(`${totalPackets}`);
-            totalCostElement.html(`₹${totalCost.toFixed(2)} /INR`);
-            productTotalCostElement.val(`${totalCost.toFixed(2)}`);
-
-            // Update final totals
-            updateFinalTotals();
-        };
-
-        // Add event listeners to inputs
-        boxInput.on('input', calculateTotals);
-        pattiInput.on('input', calculateTotals);
-        packetInput.on('input', calculateTotals);
+            // Add event listeners to inputs
+            boxInput.on('input', calculateTotals);
+            pattiInput.on('input', calculateTotals);
+            packetInput.on('input', calculateTotals);
+        }); 
+        updateFinalTotals();
     }); 
-    updateFinalTotals();
-}); 
 
 
-    $(document).ready(function() {
+        $(document).ready(function() {
+                    const updateFinalTotals = () => {
+                        let finalTotalAmount = 0;
+                        let totalProducts = 0;
+
+                        // Loop through each card to calculate the final totals
+                        $('.card').each(function() {
+                            const card = $(this);
+                            const totalCostElement = card.find('.productTotalCost');
+                            const boxInput = card.find('.productBox');
+                            const pattiInput = card.find('.productPatti');
+                            const packetInput = card.find('.productPacket');
+
+                            // Add up total costs
+                            const totalCost = parseFloat(totalCostElement.text().replace(/[^0-9.]/g, '')) || 0;
+                            finalTotalAmount += totalCost;
+
+                            // Count products that have any input value greater than 0
+                            const boxValue = parseFloat(boxInput.val()) || 0;
+                            const pattiValue = parseFloat(pattiInput.val()) || 0;
+                            const packetValue = parseFloat(packetInput.val()) || 0;
+                            if (boxValue > 0 || pattiValue > 0 || packetValue > 0) {
+                                totalProducts++;
+                            }
+                        });
+
+                        // Update the final totals on the page
+                        $('#finalTotalAmount').html(`₹${finalTotalAmount.toFixed(2)} /INR`);
+                        $('#totalAmountHidden').val(`${finalTotalAmount.toFixed(2)}`);
+                        $('#totalProducts').html(`${totalProducts}`);
+                        $('#totalProductsHidden').val(`${totalProducts}`);
+                    };
+
+                    // Loop through each card
+                    $('.card').each(function() {
+                        const card = $(this);
+
+                        // Extract product details from data attributes
+                        const boxPacketCount = parseFloat(card.data('box')) || 0;
+                        const boxPacket = parseFloat(card.data('packet')) || 0;
+                        const pattiPacketCount = parseFloat(card.data('per_patti_paket')) || 0;
+                        const pattiCount = parseFloat(card.data('patti')) || 0;
+                        const sellingPrice = parseFloat(card.data('selling_price')) || 0;
+
+                        // Inputs and display elements
+                        const boxInput = card.find('.productBox');
+                        const pattiInput = card.find('.productPatti');
+                        const packetInput = card.find('.productPacket');
+                        const totalQtyElement = card.find('.productTotalQty');
+                        const totalCostElement = card.find('.productTotalCost');
+                        const productTotalQtyElement = card.find('.productTotalFormQty');
+                        const productTotalCostElement = card.find('.productTotalFormCost');
+
+                        // Calculate totals
+                        const calculateTotals = () => {
+                            let totalPacketsFromBox = 0;
+                            let totalPacketsFromPatti = 0;
+                            let totalDirectPackets = 0;
+
+                            // Calculate packets from box
+                            const boxValue = parseFloat(boxInput.val()) || 0;
+                            totalPacketsFromBox = boxValue * boxPacket;
+
+                            // Calculate packets from patti
+                            const pattiValue = parseFloat(pattiInput.val()) || 0;
+                            totalPacketsFromPatti = pattiValue * pattiPacketCount;
+
+                            // Get directly entered packet value
+                            const packetValue = parseFloat(packetInput.val()) || 0;
+                            totalDirectPackets = packetValue;
+
+                            // Total quantity and cost
+                            const totalPackets = totalPacketsFromBox + totalPacketsFromPatti +
+                                totalDirectPackets;
+                            const totalCost = totalPackets * sellingPrice;
+
+                            // Update the display
+                            totalQtyElement.html(`${totalPackets} Pkt`);
+                            productTotalQtyElement.val(`${totalPackets}`);
+                            totalCostElement.html(`₹${totalCost.toFixed(2)} /INR`);
+                            productTotalCostElement.val(`${totalCost.toFixed(2)}`);
+
+                            // Update cart session
+                            const productId = card.find('input[name^="products"][name$="[product_id]"]').val();
+                            updateCartQuantities(productId, boxValue, pattiValue, packetValue, totalPackets);
+
+                            // Update final totals
+                            updateFinalTotals();
+                        };
+
+                        // Add event listeners to inputs
+                        boxInput.on('input', calculateTotals);
+                        pattiInput.on('input', calculateTotals);
+                        packetInput.on('input', calculateTotals);
+                    });
+
+                    // Initialize final totals on page load
+                    updateFinalTotals();
+                });
+
+
+
+
+                document.addEventListener("DOMContentLoaded", function () {
+            const categories = document.querySelectorAll(".category-box");
+
+            categories.forEach(category => {
+                category.addEventListener("click", function () {
+                    // Remove "selected" class from all categories
+                    categories.forEach(cat => cat.classList.remove("selected"));
+
+                    // Add "selected" class to the clicked category
+                    this.classList.add("selected");
+                });
+            });
+        });   
+        document.addEventListener("DOMContentLoaded", function () {
+            document.querySelectorAll(".plus-btn").forEach(function (button) {
+                button.addEventListener("click", function () {
+                    let card = this.closest(".card");  
+                    let targetClass = this.getAttribute("data-target");  
+                    let input = card.querySelector("." + targetClass); 
+                    if (input) {
+                        input.value = parseInt(input.value) + 1;  
+                        input.dispatchEvent(new Event("input"));  
+                    }
+                });
+            });
+
+            document.querySelectorAll(".minus-btn").forEach(function (button) {
+                button.addEventListener("click", function () {
+                    let card = this.closest(".card"); 
+                    let targetClass = this.getAttribute("data-target");  
+                    let input = card.querySelector("." + targetClass);  
+                    if (input && parseInt(input.value) > 0) {
+                        input.value = parseInt(input.value) - 1;  
+                        input.dispatchEvent(new Event("input"));  
+                    }
+                });
+            });
+        }); 
+        $(document).ready(function() {
                 const updateFinalTotals = () => {
                     let finalTotalAmount = 0;
                     let totalProducts = 0;
-
+                    
                     // Loop through each card to calculate the final totals
                     $('.card').each(function() {
                         const card = $(this);
@@ -600,7 +765,7 @@ $(document).ready(function() {
                         // Add up total costs
                         const totalCost = parseFloat(totalCostElement.text().replace(/[^0-9.]/g, '')) || 0;
                         finalTotalAmount += totalCost;
-
+            
                         // Count products that have any input value greater than 0
                         const boxValue = parseFloat(boxInput.val()) || 0;
                         const pattiValue = parseFloat(pattiInput.val()) || 0;
@@ -609,25 +774,23 @@ $(document).ready(function() {
                             totalProducts++;
                         }
                     });
-
+            
                     // Update the final totals on the page
                     $('#finalTotalAmount').html(`₹${finalTotalAmount.toFixed(2)} /INR`);
                     $('#totalAmountHidden').val(`${finalTotalAmount.toFixed(2)}`);
                     $('#totalProducts').html(`${totalProducts}`);
                     $('#totalProductsHidden').val(`${totalProducts}`);
                 };
-
-                // Loop through each card
                 $('.card').each(function() {
                     const card = $(this);
-
+        
                     // Extract product details from data attributes
                     const boxPacketCount = parseFloat(card.data('box')) || 0;
                     const boxPacket = parseFloat(card.data('packet')) || 0;
                     const pattiPacketCount = parseFloat(card.data('per_patti_paket')) || 0;
                     const pattiCount = parseFloat(card.data('patti')) || 0;
                     const sellingPrice = parseFloat(card.data('selling_price')) || 0;
-
+        
                     // Inputs and display elements
                     const boxInput = card.find('.productBox');
                     const pattiInput = card.find('.productPatti');
@@ -636,40 +799,43 @@ $(document).ready(function() {
                     const totalCostElement = card.find('.productTotalCost');
                     const productTotalQtyElement = card.find('.productTotalFormQty');
                     const productTotalCostElement = card.find('.productTotalFormCost');
-
+        
                     // Calculate totals
                     const calculateTotals = () => {
                         let totalPacketsFromBox = 0;
                         let totalPacketsFromPatti = 0;
                         let totalDirectPackets = 0;
-
+        
                         // Calculate packets from box
                         const boxValue = parseFloat(boxInput.val()) || 0;
                         totalPacketsFromBox = boxValue * boxPacket;
-
+        
                         // Calculate packets from patti
                         const pattiValue = parseFloat(pattiInput.val()) || 0;
                         totalPacketsFromPatti = pattiValue * pattiPacketCount;
-
+        
                         // Get directly entered packet value
                         const packetValue = parseFloat(packetInput.val()) || 0;
                         totalDirectPackets = packetValue;
-
+        
                         // Total quantity and cost
-                        const totalPackets = totalPacketsFromBox + totalPacketsFromPatti +
-                            totalDirectPackets;
+                        const totalPackets = totalPacketsFromBox + totalPacketsFromPatti + totalDirectPackets;
                         const totalCost = totalPackets * sellingPrice;
-
+        
                         // Update the display
                         totalQtyElement.html(`${totalPackets} Pkt`);
                         productTotalQtyElement.val(`${totalPackets}`);
                         totalCostElement.html(`₹${totalCost.toFixed(2)} /INR`);
                         productTotalCostElement.val(`${totalCost.toFixed(2)}`);
+        
+                        // Update cart session
+                        const productId = card.find('input[name^="products"][name$="[product_id]"]').val();
+                        updateCartQuantities(productId, boxValue, pattiValue, packetValue, totalPackets);
 
                         // Update final totals
                         updateFinalTotals();
                     };
-
+        
                     // Add event listeners to inputs
                     boxInput.on('input', calculateTotals);
                     pattiInput.on('input', calculateTotals);
@@ -696,121 +862,6 @@ $(document).ready(function() {
             });
         });
     });   
-    document.addEventListener("DOMContentLoaded", function () {
-        document.querySelectorAll(".plus-btn").forEach(function (button) {
-            button.addEventListener("click", function () {
-                let card = this.closest(".card");  
-                let targetClass = this.getAttribute("data-target");  
-                let input = card.querySelector("." + targetClass); 
-                if (input) {
-                    input.value = parseInt(input.value) + 1;  
-                    input.dispatchEvent(new Event("input"));  
-                }
-            });
-        });
-
-        document.querySelectorAll(".minus-btn").forEach(function (button) {
-            button.addEventListener("click", function () {
-                let card = this.closest(".card"); 
-                let targetClass = this.getAttribute("data-target");  
-                let input = card.querySelector("." + targetClass);  
-                if (input && parseInt(input.value) > 0) {
-                    input.value = parseInt(input.value) - 1;  
-                    input.dispatchEvent(new Event("input"));  
-                }
-            });
-        });
-    }); 
-    $(document).ready(function() {
-            const updateFinalTotals = () => {
-                let finalTotalAmount = 0;
-                let totalProducts = 0;
-                
-                // Loop through each card to calculate the final totals
-                $('.card').each(function() {
-                    const card = $(this);
-                    const totalCostElement = card.find('.productTotalCost');
-                    const boxInput = card.find('.productBox');
-                    const pattiInput = card.find('.productPatti');
-                    const packetInput = card.find('.productPacket');
-
-                    // Add up total costs
-                    const totalCost = parseFloat(totalCostElement.text().replace(/[^0-9.]/g, '')) || 0;
-                    finalTotalAmount += totalCost;
-    
-                    // Count products that have any input value greater than 0
-                    const boxValue = parseFloat(boxInput.val()) || 0;
-                    const pattiValue = parseFloat(pattiInput.val()) || 0;
-                    const packetValue = parseFloat(packetInput.val()) || 0;
-                    if (boxValue > 0 || pattiValue > 0 || packetValue > 0) {
-                        totalProducts++;
-                    }
-                });
-    
-                // Update the final totals on the page
-                $('#finalTotalAmount').html(`₹${finalTotalAmount.toFixed(2)} /INR`);
-                $('#totalAmountHidden').val(`${finalTotalAmount.toFixed(2)}`);
-                $('#totalProducts').html(`${totalProducts}`);
-                $('#totalProductsHidden').val(`${totalProducts}`);
-            };
-            $('.card').each(function() {
-                const card = $(this);
-    
-                // Extract product details from data attributes
-                const boxPacketCount = parseFloat(card.data('box')) || 0;
-                const boxPacket = parseFloat(card.data('packet')) || 0;
-                const pattiPacketCount = parseFloat(card.data('per_patti_paket')) || 0;
-                const pattiCount = parseFloat(card.data('patti')) || 0;
-                const sellingPrice = parseFloat(card.data('selling_price')) || 0;
-    
-                // Inputs and display elements
-                const boxInput = card.find('.productBox');
-                const pattiInput = card.find('.productPatti');
-                const packetInput = card.find('.productPacket');
-                const totalQtyElement = card.find('.productTotalQty');
-                const totalCostElement = card.find('.productTotalCost');
-                const productTotalQtyElement = card.find('.productTotalFormQty');
-                const productTotalCostElement = card.find('.productTotalFormCost');
-    
-                // Calculate totals
-                const calculateTotals = () => {
-                    let totalPacketsFromBox = 0;
-                    let totalPacketsFromPatti = 0;
-                    let totalDirectPackets = 0;
-    
-                    // Calculate packets from box
-                    const boxValue = parseFloat(boxInput.val()) || 0;
-                    totalPacketsFromBox = boxValue * boxPacket;
-    
-                    // Calculate packets from patti
-                    const pattiValue = parseFloat(pattiInput.val()) || 0;
-                    totalPacketsFromPatti = pattiValue * pattiPacketCount;
-    
-                    // Get directly entered packet value
-                    const packetValue = parseFloat(packetInput.val()) || 0;
-                    totalDirectPackets = packetValue;
-    
-                    // Total quantity and cost
-                    const totalPackets = totalPacketsFromBox + totalPacketsFromPatti + totalDirectPackets;
-                    const totalCost = totalPackets * sellingPrice;
-    
-                    // Update the display
-                    totalQtyElement.html(`${totalPackets} Pkt`);
-                    productTotalQtyElement.val(`${totalPackets}`);
-                    totalCostElement.html(`₹${totalCost.toFixed(2)} /INR`);
-                    productTotalCostElement.val(`${totalCost.toFixed(2)}`);
-    
-                    // Update final totals
-                    updateFinalTotals();
-                };
-    
-                // Add event listeners to inputs
-                boxInput.on('input', calculateTotals);
-                pattiInput.on('input', calculateTotals);
-                packetInput.on('input', calculateTotals);
-            });
-            updateFinalTotals();
-    });  
     </script>  
     <script>
        
@@ -820,7 +871,7 @@ $(document).ready(function() {
     <script>
        
     </script>
-    
+
 </body>
 
 </html>

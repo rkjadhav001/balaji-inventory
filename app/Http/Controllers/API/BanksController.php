@@ -313,7 +313,7 @@ class BanksController extends Controller
                             ->where('withdraw_from', $request->bank_id);
                     })
                     ->orWhere(function ($subQuery) use ($request) {
-                        $subQuery->where('p_type', 'expense_payment_cash')
+                        $subQuery->where('p_type', 'expense_payment_bank')
                             ->where('withdraw_from', $request->bank_id);
                     });
                     
@@ -379,7 +379,7 @@ class BanksController extends Controller
                         $transaction->title = 'Due Payment';
                         $transaction->credit_debit = "Debit";
                         $transaction->bank_to = '-';
-                    } elseif ($transaction->p_type == 'expense_payment_cash') {
+                    } elseif ($transaction->p_type == 'expense_payment_bank') {
                         $bank = Banks::where('id', $transaction->withdraw_from)->first();
                         $transaction->bank = $bank;
                         $transaction->title = 'Expense';
@@ -412,7 +412,7 @@ class BanksController extends Controller
     {
         $data = $this->get_admin_by_token($request);
         if($data){
-            $cashTransaction = BankTransaction::where('p_type', 'cash_to_bank')->Orwhere('p_type', 'bank_to_cash')->Orwhere('p_type', 'sale_cash')->Orwhere('p_type', 'payment_in_cash')->Orwhere('p_type', 'purchase_cash')->Orwhere('p_type', 'due_payment_cash')->get();
+            $cashTransaction = BankTransaction::where('p_type', 'cash_to_bank')->Orwhere('p_type', 'bank_to_cash')->Orwhere('p_type', 'sale_cash')->Orwhere('p_type', 'payment_in_cash')->Orwhere('p_type', 'purchase_cash')->Orwhere('p_type', 'due_payment_cash')->Orwhere('p_type', 'expense_payment_cash')->get();
             $cashTransaction->each(function ($transaction)  {
                 if ($transaction->p_type == 'cash_to_bank') { 
                     $bank = Banks::where('id', $transaction->deposit_to)->first();
