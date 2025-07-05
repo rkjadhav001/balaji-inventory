@@ -50,28 +50,104 @@ class FinancialReportController extends Controller
         }
     }
 
+    // public function partyList(Request $request)
+    // {
+    //     $data = $this->get_admin_by_token($request);
+    //     if ($data) {
+    //         $suppliers = Supplier::orderByDesc('id')->get();
+    //         foreach ($suppliers as $key => $supplier) {
+    //             $sale = Order::where('supplier_id', $supplier->id)->sum('final_amount');
+    //             $collection = BillCollection::where('party_id', $supplier->id)->sum('amount');
+    //             $returnBill = ReturnOrder::where('supplier_id', $supplier->id)->sum('final_amount');
+    //             $expanses = Expense::where('party_id', $supplier->id)->sum('total_amount');
+    //             $creditTransfer = TransferAmount::with('creditedParty', 'debitedParty')->where('to_transfer_id', $supplier->id)->where('type', 'bill')->sum('amount');
+    //             $debitTransfer = TransferAmount::where('from_transfer_id', $supplier->id)->where('type', 'bill')->sum('amount');
+    //             $purchaseInvoice = PurchaseInvoice::where('party_id', $supplier->id)->sum('total_payable_amount');
+    //             $purchaseInvoicePayment = PurchaseInvoice::where('party_id', $supplier->id)->sum('payment_amount');
+    //             $purchaseReturnInvoice = PurchaseReturnInvoice::where('party_id', $supplier->id)->sum('total_payable_amount');
+    //             $duePaymentCash = DuePayment::where('party_id', $supplier->id)->sum('cash_amount');
+    //             $duePaymentBank = DuePayment::where('party_id', $supplier->id)->sum('bank_amount');
+    //             $paymentIn = Transaction::where('party_id', $supplier->id)->where('transaction_type', 'payment_in')->sum('total_amount');
+    //             $supplier->sale = $sale;
+    //             $supplier->collection = $collection;
+    //             // $supplier->pending = $sale - $collection - $returnBill - $expanses;
+    //             $supplier->pending = $sale - $collection - $paymentIn - $returnBill - $expanses + $creditTransfer - $debitTransfer - $purchaseInvoice - $purchaseInvoicePayment + $purchaseReturnInvoice + $duePaymentCash + $duePaymentBank;
+    //             $supplier->outstanding = 0.00;
+    //             $supplier->return = $returnBill;
+    //             $netReceivable = $sale - $collection - $paymentIn - $returnBill - $expanses - $creditTransfer + $debitTransfer;
+    //             $netPayable = $purchaseInvoice - $purchaseInvoicePayment - $purchaseReturnInvoice - $duePaymentCash - $duePaymentBank;
+    //         }
+    //         return response()->json(['success' => 'true','data' => $suppliers, 'net_receivable' => $netReceivable, 'net_payable' => $netPayable,'message' => 'Supplier List Fetch successfully'], 200);
+    //     } else {
+    //         $errors = [];
+    //         array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
+    //         return response()->json([
+    //             'success' => 'false',
+    //             'data' => $errors
+    //         ], 200);
+    //     }
+    // }
+
     public function partyList(Request $request)
     {
         $data = $this->get_admin_by_token($request);
         if ($data) {
             $suppliers = Supplier::orderByDesc('id')->get();
+            $totalNetReceivable = 0;
+            $totalNetPayable = 0;
             foreach ($suppliers as $key => $supplier) {
-                $sale = Order::where('supplier_id', $supplier->id)->sum('final_amount');
-                $collection = BillCollection::where('party_id', $supplier->id)->sum('amount');
-                $returnBill = ReturnOrder::where('supplier_id', $supplier->id)->sum('final_amount');
-                $expanses = Expense::where('party_id', $supplier->id)->sum('total_amount');
-                $creditTransfer = TransferAmount::with('creditedParty', 'debitedParty')->where('to_transfer_id', $supplier->id)->where('type', 'bill')->sum('amount');
-                $debitTransfer = TransferAmount::where('from_transfer_id', $supplier->id)->where('type', 'bill')->sum('amount');
-                $purchaseInvoice = PurchaseInvoice::where('party_id', $supplier->id)->sum('total_payable_amount');
-                $purchaseInvoicePayment = PurchaseInvoice::where('party_id', $supplier->id)->sum('payment_amount');
-                $purchaseReturnInvoice = PurchaseReturnInvoice::where('party_id', $supplier->id)->sum('total_payable_amount');
-                $duePaymentCash = DuePayment::where('party_id', $supplier->id)->sum('cash_amount');
-                $duePaymentBank = DuePayment::where('party_id', $supplier->id)->sum('bank_amount');
-                $paymentIn = Transaction::where('party_id', $supplier->id)->where('transaction_type', 'payment_in')->sum('total_amount');
-                $supplier->sale = $sale;
-                $supplier->collection = $collection;
-                // $supplier->pending = $sale - $collection - $returnBill - $expanses;
-                $supplier->pending = $sale - $collection - $paymentIn - $returnBill - $expanses + $creditTransfer - $debitTransfer - $purchaseInvoice - $purchaseInvoicePayment + $purchaseReturnInvoice + $duePaymentCash + $duePaymentBank;
+                $party_id = $supplier->id;
+                 $saleMinnusTransactions = Transaction::where('party_id', $party_id)
+                ->where('transaction_type', 'sale')
+                ->where('pending_amount', '<', 0)
+                ->sum('pending_amount');
+                $rawPending = round($saleMinnusTransactions, 2);               // -1602.60
+                $totalPendingAmount = round(abs($saleMinnusTransactions), 2);  // 1602.60
+
+                $sale = Order::where('supplier_id', $party_id)->sum('final_amount');
+                $collection = BillCollection::where('party_id', $party_id)->sum('amount');
+                $returnBill = ReturnOrder::where('supplier_id', $party_id)->sum('final_amount');
+                $expanses = Expense::where('party_id', $party_id)->sum('total_amount');
+
+                $creditTransfer = TransferAmount::where('to_transfer_id', $party_id)
+                                                ->where('type', 'bill')
+                                                ->sum('amount');
+                $debitTransfer = TransferAmount::where('from_transfer_id', $party_id)
+                                            ->where('type', 'bill')
+                                            ->sum('amount');
+
+                $purchaseInvoice = PurchaseInvoice::where('party_id', $party_id)->sum('total_payable_amount');
+                $purchaseInvoicePayment = PurchaseInvoice::where('party_id', $party_id)->sum('payment_amount');
+                $purchaseReturnInvoice = PurchaseReturnInvoice::where('party_id', $party_id)->sum('total_payable_amount');
+                $duePaymentCash = DuePayment::where('party_id', $party_id)->sum('cash_amount');
+                $duePaymentBank = DuePayment::where('party_id', $party_id)->sum('bank_amount');
+                $paymentIn = Transaction::where('party_id', $party_id)
+                                        ->where('transaction_type', 'payment_in')
+                                        ->sum('total_amount');
+
+                // Correct Calculations
+                $netReceivable = ($sale ?? 0) 
+                            - ($collection ?? 0) 
+                            - ($returnBill ?? 0) 
+                            - ($paymentIn ?? 0) 
+                            - ($debitTransfer ?? 0) 
+                            + ($creditTransfer ?? 0) 
+                            - ($expanses ?? 0)
+                            + ($totalPendingAmount ?? 0);
+
+                $netPayable = $purchaseInvoice 
+                            - $purchaseInvoicePayment 
+                            - $purchaseReturnInvoice 
+                            - $duePaymentCash 
+                            - $duePaymentBank
+                            + $totalPendingAmount;
+
+                $netReceivable = round($netReceivable, 2);
+                $totalNetReceivable += $netReceivable;
+                $netPayable = round($netPayable, 2);
+                $totalNetPayable += $netPayable;
+                
+                $supplier->pending = ($netPayable) - ($netReceivable);
                 $supplier->outstanding = 0.00;
                 $supplier->return = $returnBill;
                 $netReceivable = $sale - $collection - $paymentIn - $returnBill - $expanses - $creditTransfer + $debitTransfer;
