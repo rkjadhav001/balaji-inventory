@@ -57,8 +57,10 @@
             <i class="checkmark">✓</i>
         </div>
         <h1>ORDER CONFIRMATION</h1>
-        <p>Your order <br> <span style="color: #FF7E5F">#{{ $order->order_id }}</span> <br> has been  sucessful!<br /> </p>
-        <a href="{{ route('Wholesaler.Product',$order->wholesaler->unique_id) }}" class="btn">Back To Shop</a>
+        @if ($order)
+            <p>Your order <br> <span style="color: #FF7E5F">#{{ $order->order_id }}</span> <br> has been  sucessful!<br /> </p>
+            <a href="{{ route('Wholesaler.Product') }}" class="btn">Back To Shop</a>
+        @endif
     </div>
 </body>
 

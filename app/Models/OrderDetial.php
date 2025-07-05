@@ -8,6 +8,13 @@ use Illuminate\Database\Eloquent\Model;
 class OrderDetial extends Model
 {
     use HasFactory;
+    protected $fillable = [
+        'box',
+        'patti',
+        'packet',
+        'total_qty',
+        'total_cost',
+    ];
     
     public function product()
     {

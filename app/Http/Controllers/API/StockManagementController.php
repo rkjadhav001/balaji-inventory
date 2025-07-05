@@ -33,7 +33,38 @@ class StockManagementController extends Controller
     {
         $data = $this->get_admin_by_token($request);
         if ($data) {
-            $products = Product::where('status', 1)->get();
+            $products = Product::where('status', 1)->whereRaw('CAST(available_stock AS UNSIGNED) > 0')->get();
+            $products = $products->map(function ($product) {
+                $stockDetails = $product->stock_details;
+                return [
+                    'id' => $product->id,
+                    'category' => $product->category->name,
+                    'stock_amount' => $product->available_stock * $product->selling_price,
+                    'name' => $product->name,
+                    'box' => $stockDetails['box'],
+                    'patti' => $stockDetails['patti'],
+                    'packet' => $stockDetails['packet'],
+                ];
+            });
+            return response()->json(['success' => 'true', 'data' => $products, 'message' => 'Stock List Fetch successfully'], 200);
+        } else {
+            $errors = [];
+            array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
+            return response()->json([
+                'success' => 'false',
+                'data' => $errors
+            ], 200);
+        }
+
+    }
+
+    public function lowStock(Request $request)
+    {
+        $data = $this->get_admin_by_token($request);
+        if ($data) {
+            $products = Product::where('status', 1)
+            ->whereRaw('CAST(available_stock AS UNSIGNED) <= CAST(low_stock AS UNSIGNED)')
+            ->whereRaw('CAST(available_stock AS UNSIGNED) > 0')->get();
             $products = $products->map(function ($product) {
                 $stockDetails = $product->stock_details;
                 return [
@@ -54,7 +85,33 @@ class StockManagementController extends Controller
                 'data' => $errors
             ], 200);
         }
+    }
 
+    public function outofStock(Request $request)
+    {
+        $data = $this->get_admin_by_token($request);
+        if ($data) {
+            $products = Product::where('status', 1)->whereRaw('CAST(available_stock AS UNSIGNED) <= 0')->get();
+            $products = $products->map(function ($product) {
+                $stockDetails = $product->stock_details;
+                return [
+                    'id' => $product->id,
+                    'category' => $product->category->name,
+                    'name' => $product->name,
+                    'box' => $stockDetails['box'],
+                    'patti' => $stockDetails['patti'],
+                    'packet' => $stockDetails['packet'],
+                ];
+            });
+            return response()->json(['success' => 'true', 'data' => $products, 'message' => 'Stock List Fetch successfully'], 200);
+        } else {
+            $errors = [];
+            array_push($errors, ['code' => 'auth-001', 'message' => 'Unauthorized.']);
+            return response()->json([
+                'success' => 'false',
+                'data' => $errors
+            ], 200);
+        }
     }
 
     public function addManual(Request $request)
